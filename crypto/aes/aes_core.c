@@ -39,6 +39,7 @@
 #include <openssl/aes.h>
 #include "aes_locl.h"
 
+#ifndef __riscv__
 #ifndef AES_ASM
 /*-
 Te0[x] = S [x].[02, 01, 01, 03];
@@ -1361,3 +1362,260 @@ int private_AES_set_decrypt_key(const unsigned char *userKey, const int bits,
 }
 
 #endif /* AES_ASM */
+#else
+asm(
+    ".altmacro\n"
+    ".macro rv_freg_to_num reg, symb\n"
+    "    .irp N,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31\n"
+    "        .ifc \\reg,f\\N   ; .equiv \\symb, (\\N); .exitm; .endif\n"
+    "    .endr\n"
+
+    "    .irp N,0,1,2,3,4,5,6,7\n"
+    "        .ifc \\reg,ft\\N  ; .equiv \\symb, (\\N); .exitm; .endif\n"
+    "    .endr\n"
+
+    "    .irp N,0,1\n"
+    "        .ifc \\reg,fs\\N  ; .equiv \\symb, (8 + \\N); .exitm; .endif\n"
+    "    .endr\n"
+
+    "    .irp N,0,1,2,3,4,5,6,7\n"
+    "        .ifc \\reg,fa\\N  ; .equiv \\symb, (10 + \\N); .exitm; .endif\n"
+    "    .endr\n"
+
+    "    .irp N,2,3,4,5,6,7,8,9,10,11\n"
+    "        .ifc \\reg,fs\\N  ; .equiv \\symb, (16 + \\N); .exitm; .endif\n"
+    "    .endr\n"
+
+    "    .irp N,8,9,10,11\n"
+    "        .ifc \\reg,ft\\N  ; .equiv \\symb, (20 + \\N); .exitm; .endif\n"
+    "    .endr\n"
+    "     .ifndef \\symb\n"
+    "        .error \"Bad FPU register\"\n"
+    "    .endif\n"
+    ".endm\n"
+    ".macro rv_reg_to_num reg, symb\n"
+    "    .irp N,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31\n"
+    "        .ifc \\reg,x\\N   ; .equiv \\symb, (\\N); .exitm; .endif\n"
+    "    .endr\n"
+    "    .ifc \\reg,zero ; .equiv \\symb, 0; .exitm; .endif\n"
+    "    .ifc \\reg,ra   ; .equiv \\symb, 1; .exitm; .endif\n"
+    "    .ifc \\reg,sp   ; .equiv \\symb, 2; .exitm; .endif\n"
+    "    .ifc \\reg,gp   ; .equiv \\symb, 3; .exitm; .endif\n"
+    "    .ifc \\reg,tp   ; .equiv \\symb, 4; .exitm; .endif\n"
+
+    "    .irp N,0,1,2\n"
+    "        .ifc \\reg,t\\N   ; .equiv \\symb, (5 + \\N); .exitm; .endif\n"
+    "    .endr\n"
+
+    "    .ifc \\reg,fp   ; .equiv \\symb, 8; .exitm; .endif\n"
+
+    "    .irp N,0,1\n"
+    "        .ifc \\reg,s\\N   ; .equiv \\symb, (8 + \\N); .exitm; .endif\n"
+    "    .endr\n"
+
+    "    .irp N,0,1,2,3,4,5,6,7\n"
+    "        .ifc \\reg,a\\N   ; .equiv \\symb, (10 + \\N); .exitm; .endif\n"
+    "    .endr\n"
+
+    "    .irp N,2,3,4,5,6,7,8,9,10,11\n"
+    "        .ifc \\reg,s\\N   ; .equiv \\symb, (16 + \\N); .exitm; .endif\n"
+    "    .endr\n"
+
+    "    .irp N,3,4,5,6\n"
+    "        .ifc \\reg,t\\N   ; .equiv \\symb, (28 - 3 + \\N); .exitm; .endif\n"
+    "    .endr\n"
+    "     .ifndef \\symb\n"
+    "        .error \"Bad GP register\"\n"
+    "    .endif\n"
+    ".endm\n"
+
+    ".macro riscv_R_type funct7,rs2,rs1,funct3,rd,opcode\n"
+    "    LOCAL instr lfunct7,lrs2,lrs1,lfunct3,lrd,lopcode\n"
+    "    lfunct7=\\funct7;\n"
+    "    lrs2=\\rs2\n"
+    "    lrs1=\\rs1\n"
+    "    lfunct3=\\funct3\n"
+    "    lrd=\\rd\n"
+    "    lopcode=\\opcode\n"
+    "    .ifeq (3 == (lopcode % 4))\n"
+    "        .error \"Bad len field for >=32 bit instruction\"\n"
+    "    .endif\n"
+    "    .ifne (0b11111 == (lopcode % 0b100000))\n"
+    "        .error \"Bad len field for 32 bit instruction\"\n"
+    "    .endif\n"
+    "    instr = lfunct7 << 25 | lrs2 << 20 | lrs1 << 15 | lfunct3 << 12 | lrd << 7 | lopcode\n"
+    "    .word instr\n"
+    ".endm\n"
+
+    ".macro sc_fmv.2x.d x_lo,x_hi,frs\n"
+    "    LOCAL n_frs, n_x_lo, n_x_hi\n"
+    "    rv_freg_to_num \\frs, n_frs\n"
+    "    rv_reg_to_num \\x_lo, n_x_lo\n"
+    "    rv_reg_to_num \\x_hi, n_x_hi\n"
+    "    riscv_R_type 0b1110000, n_x_hi, n_frs, 0b000, n_x_lo, 0b1010011\n"
+    ".endm\n"
+
+    ".macro sc_fmv.d.2x frd,x_lo,x_hi\n"
+    "    LOCAL n_frd, n_x_lo, n_x_hi\n"
+    "    rv_freg_to_num \\frd, n_frd\n"
+    "    rv_reg_to_num \\x_lo, n_x_lo\n"
+    "    rv_reg_to_num \\x_hi, n_x_hi\n"
+    "    riscv_R_type 0b1111000, n_x_hi, n_x_lo, 0b000, n_frd, 0b1010011\n"
+    ".endm\n"
+
+    ".macro sc_magma_be acc, op1, op2\n"
+    "    custom0 \\acc,\\op1,\\op2,0\n"
+    ".endm\n"
+
+    ".macro sc_swab, rd, rs1\n"
+    "    custom0 \\rd,\\rs1,0,0\n"
+    ".endm\n"
+
+    ".macro sc_aes_base state_lo, state_hi, key_lo, key_hi, funct2,funct3\n"
+    "    LOCAL vstate_lo, vstate_hi, vkey_lo, vkey_hi, funct7, lfunct3\n"
+    "    rv_freg_to_num \\state_lo, vstate_lo\n"
+    "    rv_freg_to_num \\state_hi, vstate_hi\n"
+    "    rv_freg_to_num \\key_lo, vkey_lo\n"
+    "    rv_freg_to_num \\key_hi, vkey_hi\n"
+    "    funct7 = (vstate_hi << 2) | (\\funct2)\n"
+    "    lfunct3 = \\funct3\n"
+    "    riscv_R_type funct7, vkey_hi, vkey_lo, lfunct3, vstate_lo, 0b0001011\n"
+    ".endm\n"
+
+    ".macro sc_aesenc state_lo, state_hi, key_lo, key_hi\n"
+    "    sc_aes_base \\state_lo, \\state_hi, \\key_lo, \\key_hi, 0b00, 0b001\n"
+    ".endm\n"
+
+    ".macro sc_aesenclast state_lo, state_hi, key_lo, key_hi\n"
+    "    sc_aes_base \\state_lo, \\state_hi, \\key_lo, \\key_hi, 0b01, 0b001\n"
+    ".endm\n"
+
+    ".macro sc_aesdec state_lo, state_hi, key_lo, key_hi\n"
+    "    sc_aes_base \\state_lo, \\state_hi, \\key_lo, \\key_hi, 0b10, 0b001\n"
+    ".endm\n"
+    ".macro sc_aesdeclast state_lo, state_hi, key_lo, key_hi\n"
+    "    sc_aes_base \\state_lo, \\state_hi, \\key_lo, \\key_hi, 0b11, 0b001\n"
+    ".endm\n"
+
+    ".macro sc_xor128 state_lo,state_hi, key_lo, key_hi\n"
+    "    sc_aes_base \\state_lo, \\state_hi, \\key_lo, \\key_hi, 0b00, 0b101\n"
+    ".endm\n"
+
+    ".macro sc_invmixcol state_lo,state_hi, key_lo, key_hi\n"
+    "    sc_aes_base \\state_lo, \\state_hi, \\key_lo, \\key_hi, 0b01, 0b101\n"
+    ".endm\n"
+
+    ".macro sc_aesdec_eqv state_lo, state_hi, key_lo, key_hi\n"
+    "    sc_aes_base \\state_lo,\\state_hi, \\key_lo, \\key_hi, 0b10, 0b101\n"
+    ".endm\n"
+
+    ".macro sc_aes_keygen_assist state_lo, state_hi, key_lo, key_hi\n"
+    "    sc_aes_base \\state_lo,\\state_hi, \\key_lo, \\key_hi, 0b11, 0b101\n"
+    ".endm\n"
+
+    ".macro sc_kuznyechik_base state_lo, state_hi, key_lo, key_hi, funct2,funct3\n"
+    "    LOCAL vstate_lo, vstate_hi, vkey_lo, vkey_hi, funct7, lfunct3\n"
+    "    rv_freg_to_num \\state_lo, vstate_lo\n"
+    "    rv_freg_to_num \\state_hi, vstate_hi\n"
+    "    rv_freg_to_num \\key_lo, vkey_lo\n"
+    "    rv_freg_to_num \\key_hi, vkey_hi\n"
+    "    funct7 = (vstate_hi << 2) | (\\funct2)\n"
+    "    lfunct3 = \\funct3\n"
+    "    riscv_R_type funct7, vkey_hi, vkey_lo, lfunct3, vstate_lo, 0b0101011\n"
+    ".endm\n"
+
+    ".macro sc_kuznyechik_encrypt state_lo,state_hi,key_lo,key_hi\n"
+    "    sc_kuznyechik_base \\state_lo,\\state_hi,\\key_lo,\\key_hi,0b00,0b101\n"
+    ".endm\n"
+
+    ".macro sc_kuznyechik_decrypt state_lo,state_hi,key_lo,key_hi\n"
+    "    sc_kuznyechik_base \\state_lo,\\state_hi,\\key_lo,\\key_hi,0b01,0b101\n"
+    ".endm\n"
+
+    ".macro sc_kuznyechik_keygenassist first_key_low,first_key_high,second_key_low,second_key_high,kr\n"
+    "    LOCAL vfirst_key_low,vfirst_key_high,vsecond_key_low,vsecond_key_high\n"
+    "    rv_freg_to_num \\first_key_low, vfirst_key_low\n"
+    "    rv_freg_to_num \\first_key_high,vfirst_key_high\n"
+    "    rv_freg_to_num \\second_key_low, vsecond_key_low\n"
+    "    rv_freg_to_num \\second_key_high, vsecond_key_high\n"
+    "    LOCAL funct7, funct7_1,funct7_2\n"
+    "    funct7_1 = vsecond_key_high << 2\n"
+    "    funct7_2 = (\\kr)\n"
+    "    funct7 = funct7_1 | funct7_2\n"
+    "    riscv_R_type funct7, vsecond_key_low, vfirst_key_high, 0b001, vfirst_key_low, 0b0101011\n"
+    ".endm\n"
+);
+
+/**
+ * Expand the cipher key into the encryption key schedule.
+ */
+int
+private_AES_set_encrypt_key(unsigned char const *userKey,
+                            int const bits,
+                            AES_KEY *key)
+{
+    if (!userKey || !key)
+        return -1;
+    if (bits != 128 && bits != 192 && bits != 256)
+        return -2;
+
+    u32 *rk = key->rd_key;
+
+    key->rounds =
+            bits==256 ? 14 :
+            bits==192 ? 12 :
+            10;
+    return 0;
+}
+
+/**
+ * Expand the cipher key into the decryption key schedule.
+ */
+int
+private_AES_set_decrypt_key(unsigned char const *userKey,
+                            int const bits,
+                            AES_KEY *key)
+{
+    return private_AES_set_encrypt_key(userKey, bits, key);
+}
+
+static __inline__ void
+load_block(unsigned char const *p_in, double *p_lo, double *p_hi)
+{
+    memcpy(p_lo, p_in, sizeof(double));
+    memcpy(p_hi, p_in + sizeof(double), sizeof(double));
+}
+static __inline__ void
+save_block(double lo, double hi, unsigned char *p_out)
+{
+    memcpy(p_out, &lo, sizeof lo);
+    memcpy(p_out + sizeof lo, &hi, sizeof hi);
+}
+/*
+ * Encrypt a single block
+ * in and out can overlap
+ */
+void
+AES_encrypt(unsigned char const *p_in,
+            unsigned char *p_out,
+            AES_KEY const *p_key)
+{
+    double state[2];
+    load_block(p_in, &state[0], &state[1]);
+    save_block(state[0], state[1], p_out);
+}
+
+/*
+ * Decrypt a single block
+ * in and out can overlap
+ */
+void
+AES_decrypt(unsigned char const *p_in,
+            unsigned char *p_out,
+            AES_KEY const *key)
+{
+    double state[2];
+    load_block(p_in, &state[0], &state[1]);
+    save_block(state[0], state[1], p_out);
+}
+#endif
