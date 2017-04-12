@@ -1593,7 +1593,7 @@ AES_encrypt(unsigned char const *p_in,
             unsigned char *p_out,
             AES_KEY const *p_key)
 {
-    double (*p_d_key)[2] = (double (*)[2])(p_key->rd_key);
+    double const (*const p_d_key)[2] = (double const (*)[2])(p_key->rd_key);
     double state0;
     double state1;
     if (0 == (u32)p_in % sizeof(double)) {
@@ -1606,27 +1606,119 @@ AES_encrypt(unsigned char const *p_in,
         state0 = state[0];
         state1 = state[1];
     }
+    asm(
+        "\t" "sc_xor128 %[state_lo], %[state_hi], %[key_lo_0], %[key_hi_0]" "\n"
 
-    asm("sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
+        "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_1], %[key_hi_1]" "\n"
+        "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_2], %[key_hi_2]" "\n"
+        "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_3], %[key_hi_3]" "\n"
+
+        "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_4], %[key_hi_4]" "\n"
+        "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_5], %[key_hi_5]" "\n"
+        "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_6], %[key_hi_6]" "\n"
+
+        "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_7], %[key_hi_7]" "\n"
+        "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_8], %[key_hi_8]" "\n"
+        "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_9], %[key_hi_9]" "\n"
+        :
+        [state_lo] "+f" (state0),
+        [state_hi] "+f" (state1)
+        :
+        [key_lo_0] "f" (p_d_key[0][0]),
+        [key_hi_0] "f" (p_d_key[0][1]),
+
+        [key_lo_1] "f" (p_d_key[1][0]),
+        [key_hi_1] "f" (p_d_key[1][1]),
+
+        [key_lo_2] "f" (p_d_key[2][0]),
+        [key_hi_2] "f" (p_d_key[2][1]),
+
+        [key_lo_3] "f" (p_d_key[3][0]),
+        [key_hi_3] "f" (p_d_key[3][1]),
+
+        [key_lo_4] "f" (p_d_key[4][0]),
+        [key_hi_4] "f" (p_d_key[4][1]),
+
+        [key_lo_5] "f" (p_d_key[5][0]),
+        [key_hi_5] "f" (p_d_key[5][1]),
+
+        [key_lo_6] "f" (p_d_key[6][0]),
+        [key_hi_6] "f" (p_d_key[6][1]),
+
+        [key_lo_7] "f" (p_d_key[7][0]),
+        [key_hi_7] "f" (p_d_key[7][1]),
+
+        [key_lo_8] "f" (p_d_key[8][0]),
+        [key_hi_8] "f" (p_d_key[8][1]),
+
+        [key_lo_9] "f" (p_d_key[9][0]),
+        [key_hi_9] "f" (p_d_key[9][1])
+    );
+    switch(p_key->rounds) {
+    case 10:
+        asm(
+            "\t" "sc_aesenclast %[state_lo], %[state_hi], %[key_lo_10], %[key_hi_10]" "\n"
+            :
             [state_lo] "+f" (state0),
-            [state_hi] "+f" (state1) :
-            [key_lo] "f" (p_d_key[0][0]),
-            [key_hi] "f" (p_d_key[0][1]));
-    for (int i = 1; i < p_key->rounds; ++i) {
-        asm("sc_aesenc %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
-                [state_lo] "+f" (state0),
-                [state_hi] "+f" (state1) :
-                [key_lo] "f" (p_d_key[i][0]),
-                [key_hi] "f" (p_d_key[i][1]));
+            [state_hi] "+f" (state1)
+            :
+            [key_lo_10] "f" (p_d_key[10][0]),
+            [key_hi_10] "f" (p_d_key[10][1])
+        );
+        break;
+    case 12:
+        asm(
+            "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_10], %[key_hi_10]" "\n"
+            "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_11], %[key_hi_11]" "\n"
+            "\t" "sc_aesenclast %[state_lo], %[state_hi], %[key_lo_12], %[key_hi_12]" "\n"
+            :
+            [state_lo] "+f" (state0),
+            [state_hi] "+f" (state1)
+            :
+            [key_lo_10] "f" (p_d_key[10][0]),
+            [key_hi_10] "f" (p_d_key[10][1]),
+
+            [key_lo_11] "f" (p_d_key[11][0]),
+            [key_hi_11] "f" (p_d_key[11][1]),
+
+            [key_lo_12] "f" (p_d_key[12][0]),
+            [key_hi_12] "f" (p_d_key[12][1])
+        );
+        break;
+    case 14:
+        asm(
+            "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_10], %[key_hi_10]" "\n"
+            "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_11], %[key_hi_11]" "\n"
+            "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_12], %[key_hi_12]" "\n"
+
+            "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo_13], %[key_hi_13]" "\n"
+            "\t" "sc_aesenclast %[state_lo], %[state_hi], %[key_lo_14], %[key_hi_14]" "\n"
+            :
+            [state_lo] "+f" (state0),
+            [state_hi] "+f" (state1)
+            :
+            [key_lo_10] "f" (p_d_key[10][0]),
+            [key_hi_10] "f" (p_d_key[10][1]),
+
+            [key_lo_11] "f" (p_d_key[11][0]),
+            [key_hi_11] "f" (p_d_key[11][1]),
+
+            [key_lo_12] "f" (p_d_key[12][0]),
+            [key_hi_12] "f" (p_d_key[12][1]),
+
+            [key_lo_13] "f" (p_d_key[13][0]),
+            [key_hi_13] "f" (p_d_key[13][1]),
+
+            [key_lo_14] "f" (p_d_key[14][0]),
+            [key_hi_14] "f" (p_d_key[14][1])
+            );
+        break;
+    default:
+        return;
     }
-    asm("sc_aesenclast %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
-            [state_lo] "+f" (state0),
-            [state_hi] "+f" (state1) :
-            [key_lo] "f" (p_d_key[p_key->rounds][0]),
-            [key_hi] "f" (p_d_key[p_key->rounds][1]));
 
     if (0 == (u32)p_out % sizeof(double)) {
-        double *p_out_d = (double const *)p_in;
+        double *p_out_d = (double*)p_in;
         p_out_d[0] = state0;
         p_out_d[1] = state1;
     } else {
@@ -1675,7 +1767,7 @@ AES_decrypt(unsigned char const *p_in,
             [key_lo] "f" (p_d_key[0][0]),
             [key_hi] "f" (p_d_key[0][1]));
     if (0 == (u32)p_out % sizeof(double)) {
-        double *p_out_d = (double const *)p_in;
+        double *p_out_d = (double*)p_in;
         p_out_d[0] = state0;
         p_out_d[1] = state1;
     } else {
