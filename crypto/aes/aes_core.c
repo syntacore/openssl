@@ -1594,39 +1594,44 @@ AES_encrypt(unsigned char const *p_in,
             AES_KEY const *p_key)
 {
     double (*p_d_key)[2] = (double (*)[2])(p_key->rd_key);
-    double state[2];
+    double state0;
+    double state1;
     if (0 == (u32)p_in % sizeof(double)) {
         double const *p_in_d = (double const *)p_in;
-        state[0] = p_in_d[0];
-        state[1] = p_in_d[1];
+        state0 = p_in_d[0];
+        state1 = p_in_d[1];
     } else {
+        double state[2];
         memcpy(state, p_in, sizeof state);
+        state0 = state[0];
+        state1 = state[1];
     }
 
     asm("sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
-            [state_lo] "+f" (state[0]),
-            [state_hi] "+f" (state[1]) :
+            [state_lo] "+f" (state0),
+            [state_hi] "+f" (state1) :
             [key_lo] "f" (p_d_key[0][0]),
             [key_hi] "f" (p_d_key[0][1]));
     for (int i = 1; i < p_key->rounds; ++i) {
         asm("sc_aesenc %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
-                [state_lo] "+f" (state[0]),
-                [state_hi] "+f" (state[1]) :
+                [state_lo] "+f" (state0),
+                [state_hi] "+f" (state1) :
                 [key_lo] "f" (p_d_key[i][0]),
                 [key_hi] "f" (p_d_key[i][1]));
     }
     asm("sc_aesenclast %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
-            [state_lo] "+f" (state[0]),
-            [state_hi] "+f" (state[1]) :
+            [state_lo] "+f" (state0),
+            [state_hi] "+f" (state1) :
             [key_lo] "f" (p_d_key[p_key->rounds][0]),
             [key_hi] "f" (p_d_key[p_key->rounds][1]));
 
     if (0 == (u32)p_out % sizeof(double)) {
         double *p_out_d = (double const *)p_in;
-        p_out_d[0] = state[0];
-        p_out_d[1] = state[1];
+        p_out_d[0] = state0;
+        p_out_d[1] = state1;
     } else {
-        memcpy(p_out, state, sizeof state);
+        memcpy(p_out                , &state0, sizeof state0);
+        memcpy(p_out + sizeof state0, &state1, sizeof state1);
     }
 }
 
@@ -1640,37 +1645,42 @@ AES_decrypt(unsigned char const *p_in,
             AES_KEY const *p_key)
 {
     double (*p_d_key)[2] = (double (*)[2])(p_key->rd_key);
-    double state[2];
+    double state0;
+    double state1;
     if (0 == (u32)p_in % sizeof(double)) {
         double const *p_in_d = (double const *)p_in;
-        state[0] = p_in_d[0];
-        state[1] = p_in_d[1];
+        state0 = p_in_d[0];
+        state1 = p_in_d[1];
     } else {
+        double state[2];
         memcpy(state, p_in, sizeof state);
+        state0 = state[0];
+        state1 = state[1];
     }
     asm("sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
-            [state_lo] "+f" (state[0]),
-            [state_hi] "+f" (state[1]) :
+            [state_lo] "+f" (state0),
+            [state_hi] "+f" (state1) :
             [key_lo] "f" (p_d_key[p_key->rounds][0]),
             [key_hi] "f" (p_d_key[p_key->rounds][1]));
     for (int i = p_key->rounds - 1; 0 < i ; --i) {
         asm("sc_aesdec %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
-                [state_lo] "+f" (state[0]),
-                [state_hi] "+f" (state[1]) :
+                [state_lo] "+f" (state0),
+                [state_hi] "+f" (state1) :
                 [key_lo] "f" (p_d_key[i][0]),
                 [key_hi] "f" (p_d_key[i][1]));
     }
     asm("sc_aesdeclast %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
-            [state_lo] "+f" (state[0]),
-            [state_hi] "+f" (state[1]) :
+            [state_lo] "+f" (state0),
+            [state_hi] "+f" (state1) :
             [key_lo] "f" (p_d_key[0][0]),
             [key_hi] "f" (p_d_key[0][1]));
     if (0 == (u32)p_out % sizeof(double)) {
         double *p_out_d = (double const *)p_in;
-        p_out_d[0] = state[0];
-        p_out_d[1] = state[1];
+        p_out_d[0] = state0;
+        p_out_d[1] = state1;
     } else {
-        memcpy(p_out, state, sizeof state);
+        memcpy(p_out                , &state0, sizeof state0);
+        memcpy(p_out + sizeof state0, &state1, sizeof state1);
     }
 }
 #endif
