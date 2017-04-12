@@ -1554,17 +1554,22 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
                             int const bits,
                             AES_KEY *key)
 {
-    if (!userKey || !key)
-        return -1;
-    if (bits != 128 && bits != 192 && bits != 256)
+    assert(userKey && key);
+    switch(bits) {
+    case 128:
+        key->rounds = 10;
+        break;
+    case 192:
+        key->rounds = 12;
+        break;
+    case 256:
+        key->rounds = 14;
+        break;
+    default:
         return -2;
-
+    }
     u32 *rk = key->rd_key;
 
-    key->rounds =
-            bits==256 ? 14 :
-            bits==192 ? 12 :
-            10;
     return 0;
 }
 
@@ -1579,18 +1584,6 @@ private_AES_set_decrypt_key(unsigned char const *userKey,
     return private_AES_set_encrypt_key(userKey, bits, key);
 }
 
-static __inline__ void
-load_block(unsigned char const *p_in, double *p_lo, double *p_hi)
-{
-    memcpy(p_lo, p_in, sizeof(double));
-    memcpy(p_hi, p_in + sizeof(double), sizeof(double));
-}
-static __inline__ void
-save_block(double lo, double hi, unsigned char *p_out)
-{
-    memcpy(p_out, &lo, sizeof lo);
-    memcpy(p_out + sizeof lo, &hi, sizeof hi);
-}
 /*
  * Encrypt a single block
  * in and out can overlap
@@ -1600,9 +1593,41 @@ AES_encrypt(unsigned char const *p_in,
             unsigned char *p_out,
             AES_KEY const *p_key)
 {
+    double (*p_d_key)[2] = (double (*)[2])(p_key->rd_key);
     double state[2];
-    load_block(p_in, &state[0], &state[1]);
-    save_block(state[0], state[1], p_out);
+    if (0 == (u32)p_in % sizeof(double)) {
+        double const *p_in_d = (double const *)p_in;
+        state[0] = p_in_d[0];
+        state[1] = p_in_d[1];
+    } else {
+        memcpy(state, p_in, sizeof state);
+    }
+
+    asm("sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
+            [state_lo] "+f" (state[0]),
+            [state_hi] "+f" (state[1]) :
+            [key_lo] "f" (p_d_key[0][0]),
+            [key_hi] "f" (p_d_key[0][1]));
+    for (int i = 1; i < p_key->rounds; ++i) {
+        asm("sc_aesenc %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
+                [state_lo] "+f" (state[0]),
+                [state_hi] "+f" (state[1]) :
+                [key_lo] "f" (p_d_key[i][0]),
+                [key_hi] "f" (p_d_key[i][1]));
+    }
+    asm("sc_aesenclast %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
+            [state_lo] "+f" (state[0]),
+            [state_hi] "+f" (state[1]) :
+            [key_lo] "f" (p_d_key[p_key->rounds][0]),
+            [key_hi] "f" (p_d_key[p_key->rounds][1]));
+
+    if (0 == (u32)p_out % sizeof(double)) {
+        double *p_out_d = (double const *)p_in;
+        p_out_d[0] = state[0];
+        p_out_d[1] = state[1];
+    } else {
+        memcpy(p_out, state, sizeof state);
+    }
 }
 
 /*
@@ -1612,10 +1637,40 @@ AES_encrypt(unsigned char const *p_in,
 void
 AES_decrypt(unsigned char const *p_in,
             unsigned char *p_out,
-            AES_KEY const *key)
+            AES_KEY const *p_key)
 {
+    double (*p_d_key)[2] = (double (*)[2])(p_key->rd_key);
     double state[2];
-    load_block(p_in, &state[0], &state[1]);
-    save_block(state[0], state[1], p_out);
+    if (0 == (u32)p_in % sizeof(double)) {
+        double const *p_in_d = (double const *)p_in;
+        state[0] = p_in_d[0];
+        state[1] = p_in_d[1];
+    } else {
+        memcpy(state, p_in, sizeof state);
+    }
+    asm("sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
+            [state_lo] "+f" (state[0]),
+            [state_hi] "+f" (state[1]) :
+            [key_lo] "f" (p_d_key[p_key->rounds][0]),
+            [key_hi] "f" (p_d_key[p_key->rounds][1]));
+    for (int i = p_key->rounds - 1; 0 < i ; --i) {
+        asm("sc_aesdec %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
+                [state_lo] "+f" (state[0]),
+                [state_hi] "+f" (state[1]) :
+                [key_lo] "f" (p_d_key[i][0]),
+                [key_hi] "f" (p_d_key[i][1]));
+    }
+    asm("sc_aesdeclast %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
+            [state_lo] "+f" (state[0]),
+            [state_hi] "+f" (state[1]) :
+            [key_lo] "f" (p_d_key[0][0]),
+            [key_hi] "f" (p_d_key[0][1]));
+    if (0 == (u32)p_out % sizeof(double)) {
+        double *p_out_d = (double const *)p_in;
+        p_out_d[0] = state[0];
+        p_out_d[1] = state[1];
+    } else {
+        memcpy(p_out, state, sizeof state);
+    }
 }
 #endif
