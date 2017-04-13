@@ -1625,12 +1625,12 @@ AES_encrypt(unsigned char const *p_in,
         "ft0", "ft1"
     );
     if (0 == (u32)p_out % sizeof(double)) {
-        double *p_out_d = (double*)p_in;
-        p_out_d[0] = state0;
-        p_out_d[1] = state1;
+        dblblk *p_out_d = (dblblk*)p_out;
+        p_out_d[0][0] = state0;
+        p_out_d[0][1] = state1;
     } else {
-        double const state[2] = {state0, state1};
-        memcpy(p_out, state, sizeof state);
+        cdblblk state = {state0, state1};
+        memcpy(p_out, &state, sizeof state);
     }
 }
 
@@ -1644,19 +1644,14 @@ AES_decrypt(unsigned char const *p_in,
             AES_KEY const *p_key)
 {
     typedef double const cdblblk[2];
+    typedef double dblblk[2];
+    dblblk state;
+    cdblblk *const p_in_d =
+            0 == (u32)p_in % sizeof(double) ? (cdblblk*)p_in :
+            (memcpy(state, p_in, sizeof state), state);
+    register double state0 = p_in_d[0][0];
+    register double state1 = p_in_d[0][1];
     cdblblk *const p_d_key = (cdblblk*)(p_key->rd_key);
-    register double state0;
-    register double state1;
-    if (0 == (u32)p_in % sizeof(double)) {
-        double const * const p_in_d = (double const *)(p_in);
-        state0 = p_in_d[0];
-        state1 = p_in_d[1];
-    } else {
-        double state[2];
-        memcpy(state, p_in, sizeof state);
-        state0 = state[0];
-        state1 = state[1];
-    }
     register cdblblk *p = &p_d_key[p_key->rounds];
     register cdblblk *const p_last = &p_d_key[0];
     asm(
@@ -1680,12 +1675,12 @@ AES_decrypt(unsigned char const *p_in,
         "ft0", "ft1"
     );
     if (0 == (u32)p_out % sizeof(double)) {
-        double *const p_out_d = (double*)p_in;
-        p_out_d[0] = state0;
-        p_out_d[1] = state1;
+        dblblk *p_out_d = (dblblk*)p_out;
+        p_out_d[0][0] = state0;
+        p_out_d[0][1] = state1;
     } else {
-        double const state[2] = {state0, state1};
-        memcpy(p_out, state, sizeof state);
+        cdblblk state = {state0, state1};
+        memcpy(p_out, &state, sizeof state);
     }
 }
 #endif
