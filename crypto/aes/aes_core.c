@@ -1724,7 +1724,7 @@ AES_encrypt(unsigned char const *p_in,
     dblblk state;
     cdblblk *const p_in_d =
             0 == (u32)p_in % sizeof(double) ? (cdblblk*)p_in :
-            (memcpy(state, p_in, sizeof state), state);
+            (memcpy(state, p_in, sizeof state), (cdblblk*)&state);
     register double state0 = p_in_d[0][0];
     register double state1 = p_in_d[0][1];
     cdblblk *const p_d_key = (cdblblk*)(p_key->rd_key);
@@ -1774,7 +1774,7 @@ AES_decrypt(unsigned char const *p_in,
     dblblk state;
     cdblblk *const p_in_d =
             0 == (u32)p_in % sizeof(double) ? (cdblblk*)p_in :
-            (memcpy(state, p_in, sizeof state), state);
+            (memcpy(state, p_in, sizeof state), (cdblblk*)&state);
     register double state0 = p_in_d[0][0];
     register double state1 = p_in_d[0][1];
     cdblblk *const p_d_key = (cdblblk*)(p_key->rd_key);
