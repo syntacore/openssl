@@ -35,6 +35,7 @@
 #endif
 #include <assert.h>
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <openssl/aes.h>
 #include "aes_locl.h"
@@ -1546,6 +1547,93 @@ asm(
     ".endm\n"
 );
 
+static const u32 rcon[14] = { 1, 2, 4, 8, 16, 32, 64, 128, 27, 54, 108, 216, 171, 77 };
+
+static int __attribute__((const))
+key_expansion_test(void);
+
+static void
+AES_128_key_exp(double state_lo, double state_hi, double rkey_lo, double rkey_hi, double * const rk)
+{
+    u32 tmp;
+    u32 tmp_lo;
+    u32 tmp_hi;
+    double tmp_64_lo;
+    double tmp_64_hi;
+    double key_with_rcon_lo;
+    double key_with_rcon_hi;
+    asm(
+            // shuffle_3
+            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp_hi],%[state_hi]" "\n"
+            "\t" "sc_fmv.d.2x %[key_with_rcon_lo],%[tmp_hi],%[tmp_hi]" "\n"
+            "\t" "sc_fmv.d.2x %[key_with_rcon_hi],%[tmp_hi],%[tmp_hi]" "\n"
+
+            // sll_4(key)
+            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp],%[rkey_lo]" "\n"
+            "\t" "sc_fmv.d.2x %[tmp_64_lo],zero,%[tmp_lo]" "\n"
+            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp_hi],%[rkey_hi]" "\n"
+            "\t" "sc_fmv.d.2x %[tmp_64_hi],%[tmp],%[tmp_lo]" "\n"
+            // xor(key, sll_4(key))
+            "\t" "sc_xor128 %[state_lo],%[state_hi],%[tmp_64_lo],%[tmp_64_hi]" "\n" // 1
+
+            // sll_4(key)
+            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp],%[rkey_lo]" "\n"
+            "\t" "sc_fmv.d.2x %[tmp_64_lo],zero,%[tmp_lo]" "\n"
+            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp_hi],%[rkey_hi]" "\n"
+            "\t" "sc_fmv.d.2x %[tmp_64_hi],%[tmp],%[tmp_lo]" "\n"
+            // xor(key, sll_4(key))
+            "\t" "sc_xor128 %[state_lo],%[state_hi],%[tmp_64_lo],%[tmp_64_hi]" "\n" // 2
+
+            // sll_4(key)
+            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp],%[rkey_lo]" "\n"
+            "\t" "sc_fmv.d.2x %[tmp_64_lo],zero,%[tmp_lo]" "\n"
+            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp_hi],%[rkey_hi]" "\n"
+            "\t" "sc_fmv.d.2x %[tmp_64_hi],%[tmp],%[tmp_lo]" "\n"
+            // xor(key, sll_4(key))
+            "\t" "sc_xor128 %[state_lo],%[state_hi],%[tmp_64_lo],%[tmp_64_hi]" "\n" // 3
+
+            // xor(key, key_with_rcon)
+            "\t" "sc_xor128 %[state_lo],%[state_hi],%[key_with_rcon_lo],%[key_with_rcon_hi]" "\n"
+
+            "\t" "fsd %[state_lo],0(%[rk])" "\n" // write it
+            "\t" "fsd %[state_hi],8(%[rk])" "\n" // write it
+            :
+            [state_lo] "=f" (state_lo),
+            [state_hi] "=f" (state_hi),
+            [rkey_lo] "+f" (rkey_lo),
+            [rkey_hi] "+f" (rkey_hi),
+            [key_with_rcon_lo] "=f" (key_with_rcon_lo),
+            [key_with_rcon_hi] "+f" (key_with_rcon_hi),
+            [tmp] "+r" (tmp),
+            [tmp_lo] "+r" (tmp_lo),
+            [tmp_hi] "+r" (tmp_hi),
+            [tmp_64_lo] "+f" (tmp_64_lo),
+            [tmp_64_hi] "+f" (tmp_64_hi)
+            :
+            [rk] "r" (rk)
+        );
+}
+
+inline static void
+AES_128_keygenassist(double state_lo, double state_hi, double rkey_lo, double rkey_hi, double *rk, size_t i)
+{
+    asm(
+        "\t" "sc_fmv.d.2x %[rkey_lo],zero,%[rcon]" "\n"
+        "\t" "fmv.d %[rkey_hi],%[rkey_lo]" "\n"
+        "\t" "sc_aes_keygen_assist %[state_lo], %[state_hi], %[rkey_lo], %[rkey_hi]" "\n"
+        "\t" "addi %[rk],%[rk],16" "\n"
+        :
+        [state_lo] "+f" (state_lo),
+        [state_hi] "+f" (state_hi),
+        [rkey_lo] "+f" (rkey_lo),
+        [rkey_hi] "+f" (rkey_hi),
+        [rk] "+r" (rk)
+        :
+        [rcon] "r" (rcon[i])
+    );
+    AES_128_key_exp(state_lo, state_hi, rkey_lo, rkey_hi,  rk);
+}
+
 /**
  * Expand the cipher key into the encryption key schedule.
  */
@@ -1555,6 +1643,7 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
                             AES_KEY *key)
 {
     assert(userKey && key);
+
     switch(bits) {
     case 128:
         key->rounds = 10;
@@ -1568,9 +1657,45 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
     default:
         return -2;
     }
-    u32 *rk = key->rd_key;
 
-    return 0;
+    double *rk = (double *)key->rd_key;
+
+    double state[2];
+    memcpy(state, userKey, 16);
+    register double state_lo = state[0];
+    register double state_hi = state[1];
+    double rkey_lo;
+    double rkey_hi;
+    u32 ret;
+
+    if (bits == 128) {
+        rk[0] = state_lo;
+        rk[1] = state_hi;
+        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 0);
+        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 1);
+        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 2);
+        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 3);
+        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 4);
+        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 5);
+        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 6);
+        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 7);
+        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 8);
+        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 9);
+    }
+    if (bits == 192) {
+
+    }
+    if (bits == 256) {
+
+    }
+
+    static int test = 0;
+    if(!test) {
+        key_expansion_test();
+        test = 1;
+    }
+
+    return test;
 }
 
 /**
@@ -1683,4 +1808,35 @@ AES_decrypt(unsigned char const *p_in,
         memcpy(p_out, &state, sizeof state);
     }
 }
+
+static int
+key_expansion_test(void)
+{
+    unsigned char const userKey[16] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f };
+    int bits = 128;
+    AES_KEY key;
+    private_AES_set_encrypt_key(userKey, bits, &key);
+
+    fprintf(stderr, "Start test\n");
+
+    // check values in key
+
+    // static u64 const key[22] = {
+    //     0x0706050403020100, 0x0f0e0d0c0b0a0908, // 000102030405060708090a0b0c0d0e0f
+    //     0xfa72afd2fd74aad6, 0xfe76abd6f178a6da, // d6aa74fdd2af72fadaa678f1d6ab76fe
+    //     0xf1bd3d640bcf92b6, 0xfeb3306800c59bbe, // b692cf0b643dbdf1be9bc5006830b3fe
+    //     0xbfc9c2d24e74ffb6, 0x41bf6904bf0c596c, // b6ff744ed2c2c9bf6c590cbf0469bf41
+    //     0x033e3595bcf7f747, 0xfd8d05fdbc326cf9, // 47f7f7bc95353e03f96c32bcfd058dfd
+    //     0xeb9d9fa9e8a3aa3c, 0xaa22f6ad57aff350, // 3caaa3e8a99f9deb50f3af57adf622aa
+    //     0x9692a6f77d0f395e, 0x6b1fa30ac13d55a7, // 5e390f7df7a69296a7553dc10aa31f6b
+    //     0x8ce25fe31a70f914, 0x26c0a94e4ddf0a44, // 14f9701ae35fe28c440adf4d4ea9c026
+    //     0xb9651ca435874347, 0xd27abfaef4ba16e0, // 47438735a41c65b9e016baf4aebf7ad2
+    //     0x685785f0d1329954, 0x4e972cbe9ced9310, // 549932d1f08557681093ed9cbe2c974e
+    //     0x174a94e37f1d1113, 0xc5302b4d8ba707f3, // 13111d7fe3944a17f307a78b4d2b30c5
+    // };
+
+    return 0;
+}
+
 #endif
