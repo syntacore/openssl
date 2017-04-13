@@ -33,13 +33,13 @@
 #  define NDEBUG
 # endif
 #endif
+#include "aes_locl.h"
 #include <assert.h>
-
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <openssl/aes.h>
-#include "aes_locl.h"
+#include <string.h>
 
 #ifndef __riscv__
 #ifndef AES_ASM
@@ -1550,8 +1550,7 @@ asm(
 
 static const u32 rcon[14] = { 1, 2, 4, 8, 16, 32, 64, 128, 27, 54, 108, 216, 171, 77 };
 
-static int __attribute__((const))
-key_expansion_test(void);
+static void key_expansion_test(void);
 
 static void
 AES_128_key_exp(double state_lo, double state_hi, double rkey_lo, double rkey_hi, double * const rk)
@@ -1644,6 +1643,11 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
                             AES_KEY *key)
 {
     assert(userKey && key);
+    static int test = 0;
+    if(!test) {
+        test = 1;
+        key_expansion_test();
+    }
 
     switch(bits) {
     case 128:
@@ -1688,12 +1692,6 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
     }
     if (bits == 256) {
 
-    }
-
-    static int test = 0;
-    if(!test) {
-        key_expansion_test();
-        test = 1;
     }
 
     return test;
@@ -1810,19 +1808,11 @@ AES_decrypt(unsigned char const *p_in,
     }
 }
 
-static int
+static void
 key_expansion_test(void)
 {
     unsigned char const userKey[16] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
                                         0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f };
-    int bits = 128;
-    AES_KEY key;
-    private_AES_set_encrypt_key(userKey, bits, &key);
-
-    fprintf(stderr, "Start test\n");
-
-    // check values in key
-
     static uint64_t const exp_key[22] = {
         UINT64_C(0x0706050403020100), UINT64_C(0x0f0e0d0c0b0a0908), // 000102030405060708090a0b0c0d0e0f
         UINT64_C(0xfa72afd2fd74aad6), UINT64_C(0xfe76abd6f178a6da), // d6aa74fdd2af72fadaa678f1d6ab76fe
@@ -1836,8 +1826,19 @@ key_expansion_test(void)
         UINT64_C(0x685785f0d1329954), UINT64_C(0x4e972cbe9ced9310), // 549932d1f08557681093ed9cbe2c974e
         UINT64_C(0x174a94e37f1d1113), UINT64_C(0xc5302b4d8ba707f3), // 13111d7fe3944a17f307a78b4d2b30c5
     };
+    fprintf(stderr, "\n\nStart test\n");
+    int bits = 128;
+    AES_KEY key;
+    private_AES_set_encrypt_key(userKey, bits, &key);
+    if (key.rounds != 10) {
+        fprintf(stderr, "key.rounds=%d\n", key.rounds);
+    }
+    if (0 != memcmp(key.rd_key, exp_key, sizeof exp_key)) {
+        fprintf(stderr, "Round keys are different\n");
+    }
+    fprintf(stderr, "End test\n\n");
+    // check values in key
 
-    return 0;
 }
 
 #endif
