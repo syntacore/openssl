@@ -28,13 +28,14 @@ build:|conf
 install:|build
 	$(MAKE) -C $(OPENSSL_SRC_DIR) install
 
+apps/openssl:|build
 .PHONY: run
-run:
-	$(QEMU_PATH) -L $(RISCV)/sysroot/ $(INSTALLDIR)/bin/openssl speed aes
+run:apps/openssl
+	$(QEMU_PATH) -L $(RISCV)/sysroot/ apps/openssl speed aes
 	
 .PHONY: dump
 dump:openssl.dump
-openssl.dump:$(INSTALLDIR)/bin/openssl
+openssl.dump:apps/openssl
 	$(RISCV)/bin/$(CROSS)-objdump -dS $< > $@ 
 	
 $(INSTALLDIR):
