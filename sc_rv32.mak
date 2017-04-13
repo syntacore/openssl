@@ -1,5 +1,7 @@
-export OPENSSL_SRC_DIR:=$(realpath .)
-export INSTALLDIR:=$(abspath ../build-openssl-1.0.2)
+current--makefile:=$(abspath $(lastword $(MAKEFILE_LIST)))
+export RISCV?=/opt/riscv32g
+export OPENSSL_SRC_DIR:=$(abspath $(dir $(current--makefile)))
+export INSTALLDIR?=$(abspath $(OPENSSL_SRC_DIR)/build-openssl-1.0.2)
 export CROSS:=riscv32-unknown-linux-gnu
 export TARGETMACH:=prefix=$(CROSS)
 export CC:=$(CROSS)-gcc
@@ -10,16 +12,13 @@ QEMU_PATH ?=/home/tools32i/riscv-qemu/riscv32-linux-user/qemu-riscv32
 
 export PATH:=${INSTALLDIR}/bin:$(PATH):$(RISCV)/bin
 
-all: conf build
 .PHONY: all
+all: conf build
 
-$(INSTALLDIR):
-	mkdir -p $@
-
+.PHONY: conf
 conf:| $(INSTALLDIR)
 	cd $(OPENSSL_SRC_DIR) && \
 	./Configure -fPIC -DOPENSSL_NO_HEARTBEATS --openssldir=$(INSTALLDIR) shared os/compiler:$(CROSS)-
-.PHONY: conf
 
 .PHONY: build
 build:|conf
@@ -31,12 +30,16 @@ install:|build
 
 .PHONY: run
 run:
-	$(QEMU_PATH) -L /opt/riscv32g/sysroot/ $(INSTALLDIR)/bin/openssl speed aes
+	$(QEMU_PATH) -L $(RISCV)/sysroot/ $(INSTALLDIR)/bin/openssl speed aes
 	
 .PHONY: dump
-dump:
-	/opt/riscv32g/bin/riscv32-unknown-linux-gnu-objdump -dS $(INSTALLDIR)/bin/openssl >openssl.dump 
+dump:openssl.dump
+openssl.dump:$(INSTALLDIR)/bin/openssl
+	$(RISCV)/bin/$(CROSS)-objdump -dS $< > $@ 
 	
+$(INSTALLDIR):
+	mkdir -p $@
+
 .PHONY: clean
 clean:
 	$(MAKE) -C $(OPENSSL_SRC_DIR) clean
