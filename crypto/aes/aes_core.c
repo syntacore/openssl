@@ -1593,30 +1593,27 @@ AES_encrypt(unsigned char const *p_in,
             unsigned char *p_out,
             AES_KEY const *p_key)
 {
-    typedef double const cp_double[2];
-    cp_double *const p_d_key = (cp_double*)(p_key->rd_key);
-    register double state0;
-    register double state1;
-    if (0 == (u32)p_in % sizeof(double)) {
-        double const *p_in_d = (double const *)p_in;
-        state0 = p_in_d[0];
-        state1 = p_in_d[1];
-    } else {
-        double state[2];
-        memcpy(state, p_in, sizeof state);
-        state0 = state[0];
-        state1 = state[1];
-    }
-    register cp_double *p = &p_d_key[0];
-    register cp_double *const p_last = &p_d_key[p_key->rounds];
+    typedef double const cdblblk[2];
+    typedef double dblblk[2];
+    dblblk state;
+    cdblblk *const p_in_d =
+            0 == (u32)p_in % sizeof(double) ? (cdblblk*)p_in :
+            (memcpy(state, p_in, sizeof state), state);
+    register double state0 = p_in_d[0][0];
+    register double state1 = p_in_d[0][1];
+    cdblblk *const p_d_key = (cdblblk*)(p_key->rd_key);
+    register cdblblk *p = &p_d_key[0];
+    register cdblblk *const p_last = &p_d_key[p_key->rounds];
     asm(
-        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "addi %[p], %[p], 16; " "\n"
-        "\t" "sc_xor128 %[state_lo], %[state_hi], ft0, ft1; " "\n"
-        "1:" "\n"
-        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "addi %[p], %[p], 16; " "\n"
-        "\t" "sc_aesenc %[state_lo], %[state_hi], ft0, ft1; " "\n"
-        "\t" "bne %[p], %[p_last],1b" "\n"
         "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "\n"
+        "\t" "addi %[p], %[p], 16; " "\n"
+        "\t" "sc_xor128 %[state_lo], %[state_hi], ft0, ft1; " "\n"
+        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "\n"
+        "1:" "\n"
+        "\t" "addi %[p], %[p], 16; " "\n"
+        "\t" "sc_aesenc %[state_lo], %[state_hi], ft0, ft1; " "\n"
+        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "\n"
+        "\t" "bne %[p], %[p_last],1b" "\n"
         "\t" "sc_aesenclast %[state_lo], %[state_hi], ft0, ft1; "  "\n"
         :
         [p] "+r" (p),
@@ -1646,8 +1643,8 @@ AES_decrypt(unsigned char const *p_in,
             unsigned char *p_out,
             AES_KEY const *p_key)
 {
-    typedef double const cp_double[2];
-    cp_double *const p_d_key = (cp_double*)(p_key->rd_key);
+    typedef double const cdblblk[2];
+    cdblblk *const p_d_key = (cdblblk*)(p_key->rd_key);
     register double state0;
     register double state1;
     if (0 == (u32)p_in % sizeof(double)) {
@@ -1660,16 +1657,18 @@ AES_decrypt(unsigned char const *p_in,
         state0 = state[0];
         state1 = state[1];
     }
-    register cp_double *p = &p_d_key[p_key->rounds];
-    register cp_double *const p_last = &p_d_key[0];
+    register cdblblk *p = &p_d_key[p_key->rounds];
+    register cdblblk *const p_last = &p_d_key[0];
     asm(
-        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "addi %[p], %[p], -16; " "\n"
-        "\t" "sc_xor128 %[state_lo], %[state_hi], ft0, ft1; " "\n"
-        "1:" "\n"
-        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "addi %[p], %[p], -16; " "\n"
-        "\t" "sc_aesdec %[state_lo], %[state_hi], ft0, ft1; " "\n"
-        "\t" "bne %[p], %[p_last],1b" "\n"
         "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "\n"
+        "\t" "addi %[p], %[p], -16; " "\n"
+        "\t" "sc_xor128 %[state_lo], %[state_hi], ft0, ft1; " "\n"
+        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "\n"
+        "1:" "\n"
+        "\t" "addi %[p], %[p], -16; " "\n"
+        "\t" "sc_aesdec %[state_lo], %[state_hi], ft0, ft1; " "\n"
+        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "\n"
+        "\t" "bne %[p], %[p_last],1b" "\n"
         "\t" "sc_aesdeclast %[state_lo], %[state_hi], ft0, ft1; "  "\n"
         :
         [p] "+r" (p),
