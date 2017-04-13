@@ -35,6 +35,7 @@
 #endif
 #include <assert.h>
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <openssl/aes.h>
@@ -1822,19 +1823,19 @@ key_expansion_test(void)
 
     // check values in key
 
-    // static u64 const key[22] = {
-    //     0x0706050403020100, 0x0f0e0d0c0b0a0908, // 000102030405060708090a0b0c0d0e0f
-    //     0xfa72afd2fd74aad6, 0xfe76abd6f178a6da, // d6aa74fdd2af72fadaa678f1d6ab76fe
-    //     0xf1bd3d640bcf92b6, 0xfeb3306800c59bbe, // b692cf0b643dbdf1be9bc5006830b3fe
-    //     0xbfc9c2d24e74ffb6, 0x41bf6904bf0c596c, // b6ff744ed2c2c9bf6c590cbf0469bf41
-    //     0x033e3595bcf7f747, 0xfd8d05fdbc326cf9, // 47f7f7bc95353e03f96c32bcfd058dfd
-    //     0xeb9d9fa9e8a3aa3c, 0xaa22f6ad57aff350, // 3caaa3e8a99f9deb50f3af57adf622aa
-    //     0x9692a6f77d0f395e, 0x6b1fa30ac13d55a7, // 5e390f7df7a69296a7553dc10aa31f6b
-    //     0x8ce25fe31a70f914, 0x26c0a94e4ddf0a44, // 14f9701ae35fe28c440adf4d4ea9c026
-    //     0xb9651ca435874347, 0xd27abfaef4ba16e0, // 47438735a41c65b9e016baf4aebf7ad2
-    //     0x685785f0d1329954, 0x4e972cbe9ced9310, // 549932d1f08557681093ed9cbe2c974e
-    //     0x174a94e37f1d1113, 0xc5302b4d8ba707f3, // 13111d7fe3944a17f307a78b4d2b30c5
-    // };
+    static uint64_t const exp_key[22] = {
+        UINT64_C(0x0706050403020100), UINT64_C(0x0f0e0d0c0b0a0908), // 000102030405060708090a0b0c0d0e0f
+        UINT64_C(0xfa72afd2fd74aad6), UINT64_C(0xfe76abd6f178a6da), // d6aa74fdd2af72fadaa678f1d6ab76fe
+        UINT64_C(0xf1bd3d640bcf92b6), UINT64_C(0xfeb3306800c59bbe), // b692cf0b643dbdf1be9bc5006830b3fe
+        UINT64_C(0xbfc9c2d24e74ffb6), UINT64_C(0x41bf6904bf0c596c), // b6ff744ed2c2c9bf6c590cbf0469bf41
+        UINT64_C(0x033e3595bcf7f747), UINT64_C(0xfd8d05fdbc326cf9), // 47f7f7bc95353e03f96c32bcfd058dfd
+        UINT64_C(0xeb9d9fa9e8a3aa3c), UINT64_C(0xaa22f6ad57aff350), // 3caaa3e8a99f9deb50f3af57adf622aa
+        UINT64_C(0x9692a6f77d0f395e), UINT64_C(0x6b1fa30ac13d55a7), // 5e390f7df7a69296a7553dc10aa31f6b
+        UINT64_C(0x8ce25fe31a70f914), UINT64_C(0x26c0a94e4ddf0a44), // 14f9701ae35fe28c440adf4d4ea9c026
+        UINT64_C(0xb9651ca435874347), UINT64_C(0xd27abfaef4ba16e0), // 47438735a41c65b9e016baf4aebf7ad2
+        UINT64_C(0x685785f0d1329954), UINT64_C(0x4e972cbe9ced9310), // 549932d1f08557681093ed9cbe2c974e
+        UINT64_C(0x174a94e37f1d1113), UINT64_C(0xc5302b4d8ba707f3), // 13111d7fe3944a17f307a78b4d2b30c5
+    };
 
     return 0;
 }
