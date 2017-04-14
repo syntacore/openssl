@@ -40,6 +40,7 @@
 #include <stdlib.h>
 #include <openssl/aes.h>
 #include <string.h>
+#include <inttypes.h>
 
 #ifndef __riscv__
 #ifndef AES_ASM
@@ -1548,91 +1549,188 @@ asm(
     ".endm\n"
 );
 
-static const u32 rcon[14] = { 1, 2, 4, 8, 16, 32, 64, 128, 27, 54, 108, 216, 171, 77 };
+static void key_expansion_test_128(void);
 
-static void key_expansion_test(void);
+struct uint128_type_st {
+    double st[2];
+};
+typedef struct uint128_type_st uint128_type;
 
-static void
-AES_128_key_exp(double state_lo, double state_hi, double rkey_lo, double rkey_hi, double * const rk)
+struct int_pair_st {
+    uint32_t p[2];
+};
+typedef struct int_pair_st int_pair;
+
+inline static uint128_type
+xor_to(uint128_type state, uint128_type const key)
 {
-    u32 tmp;
-    u32 tmp_lo;
-    u32 tmp_hi;
-    double tmp_64_lo;
-    double tmp_64_hi;
-    double key_with_rcon_lo;
-    double key_with_rcon_hi;
-    asm(
-            // shuffle_3
-            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp_hi],%[state_hi]" "\n"
-            "\t" "sc_fmv.d.2x %[key_with_rcon_lo],%[tmp_hi],%[tmp_hi]" "\n"
-            "\t" "sc_fmv.d.2x %[key_with_rcon_hi],%[tmp_hi],%[tmp_hi]" "\n"
-
-            // sll_4(key)
-            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp],%[rkey_lo]" "\n"
-            "\t" "sc_fmv.d.2x %[tmp_64_lo],zero,%[tmp_lo]" "\n"
-            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp_hi],%[rkey_hi]" "\n"
-            "\t" "sc_fmv.d.2x %[tmp_64_hi],%[tmp],%[tmp_lo]" "\n"
-            // xor(key, sll_4(key))
-            "\t" "sc_xor128 %[state_lo],%[state_hi],%[tmp_64_lo],%[tmp_64_hi]" "\n" // 1
-
-            // sll_4(key)
-            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp],%[rkey_lo]" "\n"
-            "\t" "sc_fmv.d.2x %[tmp_64_lo],zero,%[tmp_lo]" "\n"
-            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp_hi],%[rkey_hi]" "\n"
-            "\t" "sc_fmv.d.2x %[tmp_64_hi],%[tmp],%[tmp_lo]" "\n"
-            // xor(key, sll_4(key))
-            "\t" "sc_xor128 %[state_lo],%[state_hi],%[tmp_64_lo],%[tmp_64_hi]" "\n" // 2
-
-            // sll_4(key)
-            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp],%[rkey_lo]" "\n"
-            "\t" "sc_fmv.d.2x %[tmp_64_lo],zero,%[tmp_lo]" "\n"
-            "\t" "sc_fmv.2x.d %[tmp_lo],%[tmp_hi],%[rkey_hi]" "\n"
-            "\t" "sc_fmv.d.2x %[tmp_64_hi],%[tmp],%[tmp_lo]" "\n"
-            // xor(key, sll_4(key))
-            "\t" "sc_xor128 %[state_lo],%[state_hi],%[tmp_64_lo],%[tmp_64_hi]" "\n" // 3
-
-            // xor(key, key_with_rcon)
-            "\t" "sc_xor128 %[state_lo],%[state_hi],%[key_with_rcon_lo],%[key_with_rcon_hi]" "\n"
-
-            "\t" "fsd %[state_lo],0(%[rk])" "\n" // write it
-            "\t" "fsd %[state_hi],8(%[rk])" "\n" // write it
-            :
-            [state_lo] "=f" (state_lo),
-            [state_hi] "=f" (state_hi),
-            [rkey_lo] "+f" (rkey_lo),
-            [rkey_hi] "+f" (rkey_hi),
-            [key_with_rcon_lo] "=f" (key_with_rcon_lo),
-            [key_with_rcon_hi] "+f" (key_with_rcon_hi),
-            [tmp] "+r" (tmp),
-            [tmp_lo] "+r" (tmp_lo),
-            [tmp_hi] "+r" (tmp_hi),
-            [tmp_64_lo] "+f" (tmp_64_lo),
-            [tmp_64_hi] "+f" (tmp_64_hi)
-            :
-            [rk] "r" (rk)
-        );
+    asm("sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
+            [state_lo] "+f" (state.st[0]),
+            [state_hi] "+f" (state.st[1]) :
+            [key_lo] "f" (key.st[0]),
+            [key_hi] "f" (key.st[1]));
+    return state;
 }
 
-inline static void
-AES_128_keygenassist(double state_lo, double state_hi, double rkey_lo, double rkey_hi, double *rk, size_t i)
+inline static int_pair
+to_parts(double const src)
 {
-    asm(
-        "\t" "sc_fmv.d.2x %[rkey_lo],zero,%[rcon]" "\n"
-        "\t" "fmv.d %[rkey_hi],%[rkey_lo]" "\n"
-        "\t" "sc_aes_keygen_assist %[state_lo], %[state_hi], %[rkey_lo], %[rkey_hi]" "\n"
-        "\t" "addi %[rk],%[rk],16" "\n"
-        :
-        [state_lo] "+f" (state_lo),
-        [state_hi] "+f" (state_hi),
-        [rkey_lo] "+f" (rkey_lo),
-        [rkey_hi] "+f" (rkey_hi),
-        [rk] "+r" (rk)
-        :
-        [rcon] "r" (rcon[i])
-    );
-    AES_128_key_exp(state_lo, state_hi, rkey_lo, rkey_hi,  rk);
+    uint32_t dst_lo;
+    uint32_t dst_hi;
+    asm("\t" "sc_fmv.2x.d %[x_lo],%[x_hi],%[fsrc]" "\n"
+        : [x_hi] "=r" (dst_hi),
+          [x_lo] "=r" (dst_lo)
+        : [fsrc] "f" (src));
+    int_pair res = { { dst_lo, dst_hi } };
+    return res;
 }
+
+inline static double
+from_parts(uint32_t src_lo, uint32_t src_hi)
+{
+    double dst;
+    asm("\t" "sc_fmv.d.2x %[fdst],%[x_lo],%[x_hi]" "\n"
+        : [fdst] "=f" (dst)
+        : [x_hi] "r" (src_hi),
+          [x_lo] "r" (src_lo));
+    return dst;
+}
+
+inline static uint128_type
+sc_aeskeygenassist(uint128_type state, uint8_t rcon)
+{
+    double const key = from_parts(0, (uint32_t)rcon);
+    asm("sc_aes_keygen_assist %[state_lo], %[state_hi], %[key], %[key]" :
+            [state_lo] "+f" (state.st[0]),
+            [state_hi] "+f" (state.st[1]) :
+            [key] "f" (key));
+    return state;
+}
+
+inline static uint128_type
+sll_4(uint128_type key)
+{
+    int_pair tmp0;
+    tmp0 = to_parts(key.st[0]);
+    key.st[0] = from_parts(0u, tmp0.p[0]);
+    int_pair tmp1;
+    tmp1 = to_parts(key.st[1]);
+    key.st[1] = from_parts(tmp0.p[1],tmp1.p[0]);
+    return key;
+}
+
+inline static uint128_type
+shuffle(uint128_type const r, unsigned i)
+{
+    int_pair tmp;
+    double ftmp;
+    switch(i) {
+        case 0:
+            tmp = to_parts(r.st[0]);
+            ftmp = from_parts(tmp.p[0], tmp.p[0]);
+            break;
+        case 1:
+            tmp = to_parts(r.st[0]);
+            ftmp = from_parts(tmp.p[1], tmp.p[1]);
+            break;
+        case 2:
+            tmp = to_parts(r.st[1]);
+            ftmp = from_parts(tmp.p[0], tmp.p[0]);
+            break;
+        case 3:
+            tmp = to_parts(r.st[1]);
+            ftmp = from_parts(tmp.p[1], tmp.p[1]);
+            break;
+        default:
+            break;
+    }
+    uint128_type res = { { ftmp, ftmp } };
+    return res;
+}
+
+static uint128_type
+aeskeygenassist_hlp(uint128_type key, unsigned e)
+{
+    switch (e) {
+        case  0: return sc_aeskeygenassist(key, 1);
+        case  1: return sc_aeskeygenassist(key, 2);
+        case  2: return sc_aeskeygenassist(key, 4);
+        case  3: return sc_aeskeygenassist(key, 8);
+        case  4: return sc_aeskeygenassist(key, 16);
+        case  5: return sc_aeskeygenassist(key, 32);
+        case  6: return sc_aeskeygenassist(key, 64);
+        case  7: return sc_aeskeygenassist(key, 128);
+        case  8: return sc_aeskeygenassist(key, 27);
+        case  9: return sc_aeskeygenassist(key, 54);
+        case 10: return sc_aeskeygenassist(key, 108);
+        case 11: return sc_aeskeygenassist(key, 216);
+        case 12: return sc_aeskeygenassist(key, 171);
+        case 13: return sc_aeskeygenassist(key, 77);
+    }
+}
+
+static uint128_type
+AES_128_key_exp(uint128_type key, unsigned i_power)
+{
+    uint128_type const key_with_rcon0 = aeskeygenassist_hlp(key, i_power);
+    uint128_type const key_with_rcon = shuffle(key_with_rcon0, 3);
+    key = xor_to(key, sll_4(key));
+    fprintf(stderr, "key xor 1: %016"PRIx64" %016"PRIx64"\n", key.st[0], key.st[1]);
+    key = xor_to(key, sll_4(key));
+    fprintf(stderr, "key xor 2: %016"PRIx64" %016"PRIx64"\n", key.st[0], key.st[1]);
+    key = xor_to(key, sll_4(key));
+    fprintf(stderr, "key xor 3: %016"PRIx64" %016"PRIx64"\n", key.st[0], key.st[1]);
+    return xor_to(key, key_with_rcon);
+}
+
+// static uint128_type
+// aes_128_key_expansion(uint128_type key, uint128_type key_with_rcon)
+// {
+//     shuffle(key_with_rcon, 3);
+//     xor_to(key, sll_4(key));
+//     xor_to(key, sll_4(key));
+//     xor_to(key, sll_4(key));
+//     return xor_to(key, key_with_rcon);
+// }
+
+// static void
+// aes_192_key_expansion(uint128_type& K1,
+//                       uint128_type& K2,
+//                       uint128_type key2_with_rcon,
+//                       uint32_t out[], 
+//                       bool last)
+// {
+//     uint128_type key1 = K1;
+//     uint128_type key2 = K2;
+
+//     key2_with_rcon = shuffle<1>(key2_with_rcon);
+//     xor_to(key1, sll_4(key1));
+//     xor_to(key1, sll_4(key1));
+//     xor_to(key1, sll_4(key1));
+//     xor_to(key1, key2_with_rcon);
+
+//     K1 = key1;
+//     reinterpret_cast<uint128_type&>(out) = key1;
+
+//     if (!last) {
+//         xor_to(key2, sll_4(key2));
+//         xor_to(key2, shuffle<3>(key1));
+
+//         K2 = key2;
+//         to_parts(key2[0], out[4], out[5]);
+//     }
+// }
+
+// uint128_type
+// aes_256_key_expansion(uint128_type key, uint128_type key2)
+// {
+//     uint128_type key_with_rcon = sc_aeskeygenassist(key2, 0x00);
+//     shuffle<2>(key_with_rcon);
+//     xor_to(key, sll_4(key));
+//     xor_to(key, sll_4(key));
+//     xor_to(key, sll_4(key));
+//     return xor_to(key, key_with_rcon);
+// }
 
 /**
  * Expand the cipher key into the encryption key schedule.
@@ -1646,7 +1744,7 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
     static int test = 0;
     if(!test) {
         test = 1;
-        key_expansion_test();
+        key_expansion_test_128();
     }
 
     switch(bits) {
@@ -1665,33 +1763,83 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
 
     double *rk = (double *)key->rd_key;
 
-    double state[2];
-    memcpy(state, userKey, 16);
-    register double state_lo = state[0];
-    register double state_hi = state[1];
-    double rkey_lo;
-    double rkey_hi;
-    u32 ret;
+    uint128_type K;
+    memcpy(K.st, userKey, 16);
+    
+    rk[0] = K.st[0];
+    rk[1] = K.st[1];
 
     if (bits == 128) {
-        rk[0] = state_lo;
-        rk[1] = state_hi;
-        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 0);
-        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 1);
-        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 2);
-        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 3);
-        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 4);
-        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 5);
-        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 6);
-        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 7);
-        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 8);
-        AES_128_keygenassist(state_lo, state_hi, rkey_lo, rkey_hi, rk, 9);
+        for (unsigned i = 0; i < 10; ++i) {
+            K = AES_128_key_exp(K, i);
+            rk[2 * (i + 1)    ] = K.st[0];
+            rk[2 * (i + 1) + 1] = K.st[1];
+        }
     }
     if (bits == 192) {
+//         uint128_type K0 = reinterpret_cast<uint128_type const&>(key[0]);
+//         uint128_type K1 = reinterpret_cast<uint128_type const&>(key[8]);
+//         K1[1] = K1[0];
+//         K1[0] = 0;
 
+//         memcpy(m_EK.data(), std::addressof(key[0]), 6 * 4);
+
+//     #define AES_192_key_exp(RCON, EK_OFF) \
+//          aes_192_key_expansion(K0, \
+//                                K1, \
+//                                sc_aeskeygenassist(K1, RCON), \
+//                                 &reinterpret_cast<uint32_t*>(std::addressof(m_EK))[EK_OFF], \
+//                                 EK_OFF == 48)
+
+//         AES_192_key_exp(0x01, 6);
+//         AES_192_key_exp(0x02, 12);
+//         AES_192_key_exp(0x04, 18);
+//         AES_192_key_exp(0x08, 24);
+//         AES_192_key_exp(0x10, 30);
+//         AES_192_key_exp(0x20, 36);
+//         AES_192_key_exp(0x40, 42);
+//         AES_192_key_exp(0x80, 48);
+
+// #undef AES_192_key_exp
     }
     if (bits == 256) {
+        // uint128_type const K0 = reinterpret_cast<uint128_type const&>(key[0]);
+        // m_EK[0] = K0;
+        // uint128_type const K1 = reinterpret_cast<uint128_type const&>(key[16]);
+        // m_EK[1] = K1;
 
+        // uint128_type const K2 = aes_128_key_expansion(K0, sc_aeskeygenassist(K1, 0x01));
+        // m_EK[2] = K2;
+        // uint128_type const K3 = aes_256_key_expansion(K1, K2);
+        // m_EK[3] = K3;
+
+        // uint128_type const K4 = aes_128_key_expansion(K2, sc_aeskeygenassist(K3, 0x02));
+        // m_EK[4] = K4;
+        // uint128_type const K5 = aes_256_key_expansion(K3, K4);
+        // m_EK[5] = K5;
+
+        // uint128_type const K6 = aes_128_key_expansion(K4, sc_aeskeygenassist(K5, 0x04));
+        // m_EK[6] = K6;
+        // uint128_type const K7 = aes_256_key_expansion(K5, K6);
+        // m_EK[7] = K7;
+
+        // uint128_type const K8 = aes_128_key_expansion(K6, sc_aeskeygenassist(K7, 0x08));
+        // m_EK[8] = K8;
+        // uint128_type const K9 = aes_256_key_expansion(K7, K8);
+        // m_EK[9] = K9;
+
+        // uint128_type const K10 = aes_128_key_expansion(K8, sc_aeskeygenassist(K9, 0x10));
+        // m_EK[10] = K10;
+        // uint128_type const K11 = aes_256_key_expansion(K9, K10);
+        // m_EK[11] = K11;
+
+        // uint128_type const K12 = aes_128_key_expansion(K10, sc_aeskeygenassist(K11, 0x20));
+        // m_EK[12] = K12;
+        // uint128_type const K13 = aes_256_key_expansion(K11, K12);
+        // m_EK[13] = K13;
+
+        // uint128_type const K14 = aes_128_key_expansion(K12, sc_aeskeygenassist(K13, 0x40));
+        // m_EK[14] = K14;
     }
 
     return test;
@@ -1809,7 +1957,7 @@ AES_decrypt(unsigned char const *p_in,
 }
 
 static void
-key_expansion_test(void)
+key_expansion_test_128(void)
 {
     unsigned char const userKey[16] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
                                         0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f };
@@ -1826,7 +1974,7 @@ key_expansion_test(void)
         UINT64_C(0x685785f0d1329954), UINT64_C(0x4e972cbe9ced9310), // 549932d1f08557681093ed9cbe2c974e
         UINT64_C(0x174a94e37f1d1113), UINT64_C(0xc5302b4d8ba707f3), // 13111d7fe3944a17f307a78b4d2b30c5
     };
-    fprintf(stderr, "\n\nStart test\n");
+    fprintf(stderr, "\n\nStart test 128 bits\n");
     int bits = 128;
     AES_KEY key;
     private_AES_set_encrypt_key(userKey, bits, &key);
@@ -1835,9 +1983,16 @@ key_expansion_test(void)
     }
     if (0 != memcmp(key.rd_key, exp_key, sizeof exp_key)) {
         fprintf(stderr, "Round keys are different\n");
+    } else {
+        fprintf(stderr, "OK: Round keys are equal\n");
     }
+
+    // fprintf(stderr, "Got:             Expected:\n");
+    // uint64_t *rk = (uint64_t *)key.rd_key;
+    // for(unsigned i = 0; i < 2 * key.rounds + 2; ++i) {
+    //     fprintf(stderr, "%016"PRIx64" %016"PRIx64"\n", rk[i], exp_key[i]);
+    // }
     fprintf(stderr, "End test\n\n");
-    // check values in key
 
 }
 
