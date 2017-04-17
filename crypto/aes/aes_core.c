@@ -1550,21 +1550,19 @@ asm(
     ".endm\n"
 );
 
-static void key_expansion_test_128(void);
-static void key_expansion_test_192(void);
-static void key_expansion_test_256(void);
-
-struct uint128_type_st {
+struct uint128_type_st
+{
     double st[2];
 };
 typedef struct uint128_type_st uint128_type;
 
-struct int_pair_st {
+struct int_pair_st
+{
     uint32_t p[2];
 };
 typedef struct int_pair_st int_pair;
 
-inline static uint128_type
+static inline uint128_type
 xor_to(uint128_type state, uint128_type const key)
 {
     asm("sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
@@ -1575,7 +1573,7 @@ xor_to(uint128_type state, uint128_type const key)
     return state;
 }
 
-inline static int_pair
+static inline int_pair
 to_parts(double const src)
 {
     uint32_t dst_lo;
@@ -1588,7 +1586,7 @@ to_parts(double const src)
     return res;
 }
 
-inline static double
+static inline double
 from_parts(uint32_t src_lo, uint32_t src_hi)
 {
     double dst;
@@ -1599,7 +1597,7 @@ from_parts(uint32_t src_lo, uint32_t src_hi)
     return dst;
 }
 
-inline static uint128_type
+static inline uint128_type
 sc_aeskeygenassist(uint128_type state, uint8_t rcon)
 {
     double const key = from_parts(0, (uint32_t)rcon);
@@ -1622,7 +1620,7 @@ sll_4(uint128_type key)
     return key;
 }
 
-inline static uint128_type
+static inline uint128_type
 shuffle(uint128_type const r, unsigned i)
 {
     int_pair tmp;
@@ -1647,11 +1645,11 @@ shuffle(uint128_type const r, unsigned i)
         default:
             break;
     }
-    uint128_type res = { { ftmp, ftmp } };
+    uint128_type const res = { { ftmp, ftmp } };
     return res;
 }
 
-static uint128_type
+static inline uint128_type
 aeskeygenassist_hlp(uint128_type key, unsigned e)
 {
     switch (e) {
@@ -1672,7 +1670,7 @@ aeskeygenassist_hlp(uint128_type key, unsigned e)
     }
 }
 
-static uint128_type
+static inline uint128_type
 AES_128_key_exp(uint128_type key, unsigned i_power)
 {
     uint128_type const key_with_rcon0 = aeskeygenassist_hlp(key, i_power);
@@ -1734,6 +1732,102 @@ aes_256_key_expansion(uint128_type key, uint128_type key2)
     return xor_to(key, key_with_rcon);
 }
 
+static void
+key_expansion_test_128(void)
+{
+    unsigned char const userKey[16] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f };
+    static uint64_t const exp_key[22] = {
+        UINT64_C(0x0706050403020100), UINT64_C(0x0f0e0d0c0b0a0908), // 000102030405060708090a0b0c0d0e0f
+        UINT64_C(0xfa72afd2fd74aad6), UINT64_C(0xfe76abd6f178a6da), // d6aa74fdd2af72fadaa678f1d6ab76fe
+        UINT64_C(0xf1bd3d640bcf92b6), UINT64_C(0xfeb3306800c59bbe), // b692cf0b643dbdf1be9bc5006830b3fe
+        UINT64_C(0xbfc9c2d24e74ffb6), UINT64_C(0x41bf6904bf0c596c), // b6ff744ed2c2c9bf6c590cbf0469bf41
+        UINT64_C(0x033e3595bcf7f747), UINT64_C(0xfd8d05fdbc326cf9), // 47f7f7bc95353e03f96c32bcfd058dfd
+        UINT64_C(0xeb9d9fa9e8a3aa3c), UINT64_C(0xaa22f6ad57aff350), // 3caaa3e8a99f9deb50f3af57adf622aa
+        UINT64_C(0x9692a6f77d0f395e), UINT64_C(0x6b1fa30ac13d55a7), // 5e390f7df7a69296a7553dc10aa31f6b
+        UINT64_C(0x8ce25fe31a70f914), UINT64_C(0x26c0a94e4ddf0a44), // 14f9701ae35fe28c440adf4d4ea9c026
+        UINT64_C(0xb9651ca435874347), UINT64_C(0xd27abfaef4ba16e0), // 47438735a41c65b9e016baf4aebf7ad2
+        UINT64_C(0x685785f0d1329954), UINT64_C(0x4e972cbe9ced9310), // 549932d1f08557681093ed9cbe2c974e
+        UINT64_C(0x174a94e37f1d1113), UINT64_C(0xc5302b4d8ba707f3), // 13111d7fe3944a17f307a78b4d2b30c5
+    };
+    int bits = 128;
+    AES_KEY key;
+    private_AES_set_encrypt_key(userKey, bits, &key);
+    if (key.rounds != 10) {
+        fprintf(stderr, "\nkey.rounds=%d\n", key.rounds);
+    }
+    if (0 != memcmp(key.rd_key, exp_key, sizeof exp_key)) {
+        fprintf(stderr, "\nRound keys are different\n");
+    }
+}
+
+static void
+key_expansion_test_192(void)
+{
+    unsigned char const userKey[24] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+                                        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17 };
+    static uint64_t const exp_key[26] = {
+        UINT64_C(0x0706050403020100), UINT64_C(0x0f0e0d0c0b0a0908), // 000102030405060708090a0b0c0d0e0f
+        UINT64_C(0x1716151413121110), UINT64_C(0xfef4435cf9f24658), // 10111213141516175846f2f95c43f4fe
+        UINT64_C(0xfaf04758f5fe4a54), UINT64_C(0xfef4435ce9e25648), // 544afef55847f0fa4856e2e95c43f4fe
+        UINT64_C(0x4dbdba1cb349f940), UINT64_C(0x42b3b710b843f048), // 40f949b31cbabd4d48f043b810b7b342
+        UINT64_C(0x55a5a204ab51e158), UINT64_C(0x0c08456241b5ff7e), // 58e151ab04a2a5557effb5416245080c
+        UINT64_C(0xf6f8023ab44bb52a), UINT64_C(0x080c41665da9e362), // 2ab54bb43a02f8f662e3a95d66410c08
+        UINT64_C(0x7e8d4497728501f5), UINT64_C(0x3c3ef387cac6f1bd), // f501857297448d7ebdf1c6ca87f33e3c
+        UINT64_C(0x699b5183619710e5), UINT64_C(0xe0f151a39e7c1534), // e510976183519b6934157c9ea351f1e0
+        UINT64_C(0x160953992a37a01e), UINT64_C(0x1e0512ff779e437c), // 1ea0372a995309167c439e77ff12051e
+        UINT64_C(0x68ff2f7e880e7edd), UINT64_C(0x54c1dcf942c88f60), // dd7e0e887e2fff68608fc842f9dcc154
+        UINT64_C(0x3d5a8d7a235f9f85), UINT64_C(0x3ad6efbe5229c0c0), // 859f5f237a8d5a3dc0c02952beefd63a
+        UINT64_C(0x2cdfbc27781e60de), UINT64_C(0x32daaed80f8023a2), // de601e7827bcdf2ca223800fd8aeda32
+        UINT64_C(0x09dc781a330a97a4), UINT64_C(0x5d1da4e371c218c4), // a4970a331a78dc09c418c271e3a41d5d
+    };
+    int bits = 192;
+    AES_KEY key;
+    private_AES_set_encrypt_key(userKey, bits, &key);
+    if (key.rounds != 12) {
+        fprintf(stderr, "\nkey.rounds=%d\n", key.rounds);
+    }
+
+    if (0 != memcmp(key.rd_key, exp_key, sizeof exp_key)) {
+        fprintf(stderr, "\nRound keys are different\n");
+    }
+}
+
+static void
+key_expansion_test_256(void)
+{
+    unsigned char const userKey[32] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+                                        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+                                        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f };
+    static uint64_t const exp_key[30] = {
+        UINT64_C(0x0706050403020100), UINT64_C(0x0f0e0d0c0b0a0908), // 000102030405060708090a0b0c0d0e0f
+        UINT64_C(0x1716151413121110), UINT64_C(0x1f1e1d1c1b1a1918), // 101112131415161718191a1b1c1d1e1f
+        UINT64_C(0x98c476a19fc273a5), UINT64_C(0x9cc072a593ce7fa9), // a573c29fa176c498a97fce93a572c09c
+        UINT64_C(0xdabe4402cda85116), UINT64_C(0xdeba4006c1a45d1a), // 1651a8cd0244beda1a5da4c10640bade
+        UINT64_C(0x681bf10ff0df87ae), UINT64_C(0x6715fc03fbd58ea6), // ae87dff00ff11b68a68ed5fb03fc1567
+        UINT64_C(0x924fa56f48f1e16d), UINT64_C(0x8d51b87353ebf875), // 6de1f1486fa54f9275f8eb5373b8518d
+        UINT64_C(0x1799a7c97f8256c6), UINT64_C(0x8b59d56cec4c296f), // c656827fc9a799176f294cec6cd5598b
+        UINT64_C(0xe7754752753ae23d), UINT64_C(0x39cf0754b49ebf27), // 3de23a75524775e727bf9eb45407cf39
+        UINT64_C(0x48097bc25f90dc0b), UINT64_C(0x2f1c87c1a44552ad), // 0bdc905fc27b0948ad5245a4c1871c2f
+        UINT64_C(0x87d3b21760a6f545), UINT64_C(0x0a820a64334d0d30), // 45f5a66017b2d387300d4d33640a820a
+        UINT64_C(0x54feb4be1cf7cf7c), UINT64_C(0xdfa761d2f0bbe613), // 7ccff71cbeb4fe5413e6bbf0d261a7df
+        UINT64_C(0x7929a8e7fefa1af0), UINT64_C(0x40e6afb34a64a5d7), // f01afafee7a82979d7a5644ab3afe640
+        UINT64_C(0x2500f59b71fe4125), UINT64_C(0x0a1c725ad5bb1388), // 2541fe719bf500258813bbd55a721c0a
+        UINT64_C(0xe04ff2a999665a4e), UINT64_C(0xeacdf8cdaa2b577e), // 4e5a6699a9f24fe07e572baacdf8cdea
+        UINT64_C(0xe97909bfcc79fc24), UINT64_C(0x36de686d3cc21a37), // 24fc79ccbf0979e9371ac23c6d68de36
+    };
+    int bits = 256;
+    AES_KEY key;
+    private_AES_set_encrypt_key(userKey, bits, &key);
+    if (key.rounds != 14) {
+        fprintf(stderr, "\nkey.rounds=%d\n", key.rounds);
+    }
+    if (0 != memcmp(key.rd_key, exp_key, sizeof exp_key)) {
+        fprintf(stderr, "\nRound keys are different\n");
+    }
+}
 /**
  * Expand the cipher key into the encryption key schedule.
  */
@@ -1743,13 +1837,16 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
                             AES_KEY *key)
 {
     assert(userKey && key);
-    static int test = 0;
-    if(!test) {
-        test = 1;
-        key_expansion_test_128();
-        key_expansion_test_192();
-        key_expansion_test_256();
-    }
+    #if 1
+        static int test = 0;
+        if(!test) {
+            test = 1;
+            key_expansion_test_128();
+            key_expansion_test_192();
+            key_expansion_test_256();
+        }
+    #endif
+
 
     switch(bits) {
     case 128:
@@ -1768,7 +1865,7 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
     double *rk = (double *)key->rd_key;
 
     uint128_type K;
-    memcpy(K.st, userKey, 16);
+    memcpy(&K, userKey, 16);
     
     rk[0] = K.st[0];
     rk[1] = K.st[1];
@@ -1858,7 +1955,7 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
         rk[29] = K14.st[1];
     }
 
-    return test;
+    return 0;
 }
 
 /**
@@ -1970,132 +2067,6 @@ AES_decrypt(unsigned char const *p_in,
         cdblblk state = {state0, state1};
         memcpy(p_out, &state, sizeof state);
     }
-}
-
-static void
-key_expansion_test_128(void)
-{
-    unsigned char const userKey[16] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-                                        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f };
-    static uint64_t const exp_key[22] = {
-        UINT64_C(0x0706050403020100), UINT64_C(0x0f0e0d0c0b0a0908), // 000102030405060708090a0b0c0d0e0f
-        UINT64_C(0xfa72afd2fd74aad6), UINT64_C(0xfe76abd6f178a6da), // d6aa74fdd2af72fadaa678f1d6ab76fe
-        UINT64_C(0xf1bd3d640bcf92b6), UINT64_C(0xfeb3306800c59bbe), // b692cf0b643dbdf1be9bc5006830b3fe
-        UINT64_C(0xbfc9c2d24e74ffb6), UINT64_C(0x41bf6904bf0c596c), // b6ff744ed2c2c9bf6c590cbf0469bf41
-        UINT64_C(0x033e3595bcf7f747), UINT64_C(0xfd8d05fdbc326cf9), // 47f7f7bc95353e03f96c32bcfd058dfd
-        UINT64_C(0xeb9d9fa9e8a3aa3c), UINT64_C(0xaa22f6ad57aff350), // 3caaa3e8a99f9deb50f3af57adf622aa
-        UINT64_C(0x9692a6f77d0f395e), UINT64_C(0x6b1fa30ac13d55a7), // 5e390f7df7a69296a7553dc10aa31f6b
-        UINT64_C(0x8ce25fe31a70f914), UINT64_C(0x26c0a94e4ddf0a44), // 14f9701ae35fe28c440adf4d4ea9c026
-        UINT64_C(0xb9651ca435874347), UINT64_C(0xd27abfaef4ba16e0), // 47438735a41c65b9e016baf4aebf7ad2
-        UINT64_C(0x685785f0d1329954), UINT64_C(0x4e972cbe9ced9310), // 549932d1f08557681093ed9cbe2c974e
-        UINT64_C(0x174a94e37f1d1113), UINT64_C(0xc5302b4d8ba707f3), // 13111d7fe3944a17f307a78b4d2b30c5
-    };
-    fprintf(stderr, "\n\nStart test 128 bits\n");
-    int bits = 128;
-    AES_KEY key;
-    private_AES_set_encrypt_key(userKey, bits, &key);
-    if (key.rounds != 10) {
-        fprintf(stderr, "key.rounds=%d\n", key.rounds);
-    }
-    if (0 != memcmp(key.rd_key, exp_key, sizeof exp_key)) {
-        fprintf(stderr, "Round keys are different\n");
-    } else {
-        fprintf(stderr, "OK: Round keys are equal\n");
-    }
-
-    // fprintf(stderr, "Got:             Expected:\n");
-    // uint64_t *rk = (uint64_t *)key.rd_key;
-    // for(unsigned i = 0; i < 2 * key.rounds + 2; ++i) {
-    //     fprintf(stderr, "%016"PRIx64" %016"PRIx64"\n", rk[i], exp_key[i]);
-    // }
-    fprintf(stderr, "End test\n\n");
-
-}
-
-static void
-key_expansion_test_192(void)
-{
-    unsigned char const userKey[24] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-                                        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-                                        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17 };
-    static uint64_t const exp_key[26] = {
-        UINT64_C(0x0706050403020100), UINT64_C(0x0f0e0d0c0b0a0908), // 000102030405060708090a0b0c0d0e0f
-        UINT64_C(0x1716151413121110), UINT64_C(0xfef4435cf9f24658), // 10111213141516175846f2f95c43f4fe
-        UINT64_C(0xfaf04758f5fe4a54), UINT64_C(0xfef4435ce9e25648), // 544afef55847f0fa4856e2e95c43f4fe
-        UINT64_C(0x4dbdba1cb349f940), UINT64_C(0x42b3b710b843f048), // 40f949b31cbabd4d48f043b810b7b342
-        UINT64_C(0x55a5a204ab51e158), UINT64_C(0x0c08456241b5ff7e), // 58e151ab04a2a5557effb5416245080c
-        UINT64_C(0xf6f8023ab44bb52a), UINT64_C(0x080c41665da9e362), // 2ab54bb43a02f8f662e3a95d66410c08
-        UINT64_C(0x7e8d4497728501f5), UINT64_C(0x3c3ef387cac6f1bd), // f501857297448d7ebdf1c6ca87f33e3c
-        UINT64_C(0x699b5183619710e5), UINT64_C(0xe0f151a39e7c1534), // e510976183519b6934157c9ea351f1e0
-        UINT64_C(0x160953992a37a01e), UINT64_C(0x1e0512ff779e437c), // 1ea0372a995309167c439e77ff12051e
-        UINT64_C(0x68ff2f7e880e7edd), UINT64_C(0x54c1dcf942c88f60), // dd7e0e887e2fff68608fc842f9dcc154
-        UINT64_C(0x3d5a8d7a235f9f85), UINT64_C(0x3ad6efbe5229c0c0), // 859f5f237a8d5a3dc0c02952beefd63a
-        UINT64_C(0x2cdfbc27781e60de), UINT64_C(0x32daaed80f8023a2), // de601e7827bcdf2ca223800fd8aeda32
-        UINT64_C(0x09dc781a330a97a4), UINT64_C(0x5d1da4e371c218c4), // a4970a331a78dc09c418c271e3a41d5d
-    };
-    fprintf(stderr, "\n\nStart test 192 bits\n");
-    int bits = 192;
-    AES_KEY key;
-    private_AES_set_encrypt_key(userKey, bits, &key);
-    if (key.rounds != 12) {
-        fprintf(stderr, "key.rounds=%d\n", key.rounds);
-    }
-
-    if (0 != memcmp(key.rd_key, exp_key, sizeof exp_key)) {
-        fprintf(stderr, "Round keys are different\n");
-    } else {
-        fprintf(stderr, "OK: Round keys are equal\n");
-    }
-
-    // fprintf(stderr, "Got:             Expected:\n");
-    // uint64_t *rk = (uint64_t *)key.rd_key;
-    // for(unsigned i = 0; i < 2 * key.rounds + 2; ++i) {
-    //     fprintf(stderr, "%016"PRIx64" %016"PRIx64"\n", rk[i], exp_key[i]);
-    // }
-    fprintf(stderr, "End test\n\n");
-
-}
-
-static void
-key_expansion_test_256(void)
-{
-    unsigned char const userKey[32] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-                                        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-                                        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-                                        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f };
-    static uint64_t const exp_key[30] = {
-        UINT64_C(0x0706050403020100), UINT64_C(0x0f0e0d0c0b0a0908), // 000102030405060708090a0b0c0d0e0f
-        UINT64_C(0x1716151413121110), UINT64_C(0x1f1e1d1c1b1a1918), // 101112131415161718191a1b1c1d1e1f
-        UINT64_C(0x98c476a19fc273a5), UINT64_C(0x9cc072a593ce7fa9), // a573c29fa176c498a97fce93a572c09c
-        UINT64_C(0xdabe4402cda85116), UINT64_C(0xdeba4006c1a45d1a), // 1651a8cd0244beda1a5da4c10640bade
-        UINT64_C(0x681bf10ff0df87ae), UINT64_C(0x6715fc03fbd58ea6), // ae87dff00ff11b68a68ed5fb03fc1567
-        UINT64_C(0x924fa56f48f1e16d), UINT64_C(0x8d51b87353ebf875), // 6de1f1486fa54f9275f8eb5373b8518d
-        UINT64_C(0x1799a7c97f8256c6), UINT64_C(0x8b59d56cec4c296f), // c656827fc9a799176f294cec6cd5598b
-        UINT64_C(0xe7754752753ae23d), UINT64_C(0x39cf0754b49ebf27), // 3de23a75524775e727bf9eb45407cf39
-        UINT64_C(0x48097bc25f90dc0b), UINT64_C(0x2f1c87c1a44552ad), // 0bdc905fc27b0948ad5245a4c1871c2f
-        UINT64_C(0x87d3b21760a6f545), UINT64_C(0x0a820a64334d0d30), // 45f5a66017b2d387300d4d33640a820a
-        UINT64_C(0x54feb4be1cf7cf7c), UINT64_C(0xdfa761d2f0bbe613), // 7ccff71cbeb4fe5413e6bbf0d261a7df
-        UINT64_C(0x7929a8e7fefa1af0), UINT64_C(0x40e6afb34a64a5d7), // f01afafee7a82979d7a5644ab3afe640
-        UINT64_C(0x2500f59b71fe4125), UINT64_C(0x0a1c725ad5bb1388), // 2541fe719bf500258813bbd55a721c0a
-        UINT64_C(0xe04ff2a999665a4e), UINT64_C(0xeacdf8cdaa2b577e), // 4e5a6699a9f24fe07e572baacdf8cdea
-        UINT64_C(0xe97909bfcc79fc24), UINT64_C(0x36de686d3cc21a37), // 24fc79ccbf0979e9371ac23c6d68de36
-    };
-    fprintf(stderr, "\n\nStart test 256 bits\n");
-    int bits = 256;
-    AES_KEY key;
-    private_AES_set_encrypt_key(userKey, bits, &key);
-    if (key.rounds != 14) {
-        fprintf(stderr, "key.rounds=%d\n", key.rounds);
-    }
-
-    if (0 != memcmp(key.rd_key, exp_key, sizeof exp_key)) {
-        fprintf(stderr, "Round keys are different\n");
-    } else {
-        fprintf(stderr, "OK: Round keys are equal\n");
-    }
-
-    fprintf(stderr, "End test\n\n");
-
 }
 
 #endif
