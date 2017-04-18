@@ -1929,25 +1929,27 @@ AES_encrypt(unsigned char const *p_in,
     cdblblk *const p_d_key = (cdblblk*)(p_key->rd_key);
     register cdblblk *p = &p_d_key[0];
     register cdblblk *const p_last = &p_d_key[p_key->rounds];
+    register double key0;
+    register double key1;
     asm(
-        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "\n"
+        "\t" "fld %[key_lo], 0(%[p]); "  "fld %[key_hi], 8(%[p]); " "\n"
         "\t" "addi %[p], %[p], 16; " "\n"
-        "\t" "sc_xor128 %[state_lo], %[state_hi], ft0, ft1; " "\n"
-        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "\n"
+        "\t" "sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+        "\t" "fld %[key_lo], 0(%[p]); "  "fld %[key_hi], 8(%[p]); " "\n"
         "1:" "\n"
         "\t" "addi %[p], %[p], 16; " "\n"
-        "\t" "sc_aesenc %[state_lo], %[state_hi], ft0, ft1; " "\n"
-        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "\n"
+        "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+        "\t" "fld %[key_lo], 0(%[p]); "  "fld %[key_hi], 8(%[p]); " "\n"
         "\t" "bne %[p], %[p_last],1b" "\n"
-        "\t" "sc_aesenclast %[state_lo], %[state_hi], ft0, ft1; "  "\n"
+        "\t" "sc_aesenclast %[state_lo], %[state_hi], %[key_lo], %[key_hi]; "  "\n"
         :
         [p] "+r" (p),
         [state_lo] "+f" (state0),
-        [state_hi] "+f" (state1)
+        [state_hi] "+f" (state1),
+        [key_lo] "=f" (key0),
+        [key_hi] "=f" (key1)
         :
         [p_last] "r" (p_last)
-        :
-        "ft0", "ft1"
     );
     if (0 == (u32)p_out % sizeof(double)) {
         dblblk *p_out_d = (dblblk*)p_out;
@@ -1979,25 +1981,27 @@ AES_decrypt(unsigned char const *p_in,
     cdblblk *const p_d_key = (cdblblk*)(p_key->rd_key);
     register cdblblk *p = &p_d_key[p_key->rounds];
     register cdblblk *const p_last = &p_d_key[0];
+    register double key0;
+    register double key1;
     asm(
-        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "\n"
+        "\t" "fld %[key_lo], 0(%[p]); "  "fld %[key_hi], 8(%[p]); " "\n"
         "\t" "addi %[p], %[p], -16; " "\n"
-        "\t" "sc_xor128 %[state_lo], %[state_hi], ft0, ft1; " "\n"
-        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "\n"
+        "\t" "sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+        "\t" "fld %[key_lo], 0(%[p]); "  "fld %[key_hi], 8(%[p]); " "\n"
         "1:" "\n"
         "\t" "addi %[p], %[p], -16; " "\n"
-        "\t" "sc_aesdec %[state_lo], %[state_hi], ft0, ft1; " "\n"
-        "\t" "fld ft0, 0(%[p]); "  "fld ft1, 8(%[p]); " "\n"
+        "\t" "sc_aesdec %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+        "\t" "fld %[key_lo], 0(%[p]); "  "fld %[key_hi], 8(%[p]); " "\n"
         "\t" "bne %[p], %[p_last],1b" "\n"
-        "\t" "sc_aesdeclast %[state_lo], %[state_hi], ft0, ft1; "  "\n"
+        "\t" "sc_aesdeclast %[state_lo], %[state_hi], %[key_lo], %[key_hi]; "  "\n"
         :
         [p] "+r" (p),
         [state_lo] "+f" (state0),
-        [state_hi] "+f" (state1)
+        [state_hi] "+f" (state1),
+        [key_lo] "=f" (key0),
+        [key_hi] "=f" (key1)
         :
         [p_last] "r" (p_last)
-        :
-        "ft0", "ft1"
     );
     if (0 == (u32)p_out % sizeof(double)) {
         dblblk *p_out_d = (dblblk*)p_out;
