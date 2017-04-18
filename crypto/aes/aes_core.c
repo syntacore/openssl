@@ -1675,28 +1675,14 @@ aes_256_key_expansion(uint128_type key, uint128_type key2)
     return aes_key_expansion(key, key_with_rcon);
 }
 
-static inline void
-aes_192_key_expansion(uint128_type *K1,
-                      uint128_type *K2,
-                      uint128_type const key2_with_rcon,
-                      double *out,
-                      bool last)
+static uint8_t const ref_plain_text[16] =
 {
-    *K1 = aes_key_expansion(*K1, shuffle(key2_with_rcon, 1));
-    memcpy(out, K1, 4 * 4);
-
-    if (!last) {
-        uint128_type key2 = *K2;
-        key2 = xor_to(key2, sll_4(key2));
-        key2 = xor_to(key2, shuffle(*K1, 3));
-
-        *K2 = key2;
-        out[2] = key2.st[0];
-    }
-}
+    0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+    0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
+};
 
 static void
-key_expansion_test_128(void)
+test_128(void)
 {
     unsigned char const userKey[16] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
                                         0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f };
@@ -1713,19 +1699,37 @@ key_expansion_test_128(void)
         UINT64_C(0x685785f0d1329954), UINT64_C(0x4e972cbe9ced9310), // 549932d1f08557681093ed9cbe2c974e
         UINT64_C(0x174a94e37f1d1113), UINT64_C(0xc5302b4d8ba707f3), // 13111d7fe3944a17f307a78b4d2b30c5
     };
-    int bits = 128;
-    AES_KEY key;
-    private_AES_set_encrypt_key(userKey, bits, &key);
-    if (key.rounds != 10) {
-        fprintf(stderr, "\nkey.rounds=%d\n", key.rounds);
+    static uint8_t const ref_cipher_text[16] =
+    {
+        0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30,
+        0xd8, 0xcd, 0xb7, 0x80, 0x70, 0xb4, 0xc5, 0x5a
+    };
+
+    static int const bits = 128;
+    AES_KEY encr_key;
+    private_AES_set_encrypt_key(userKey, bits, &encr_key);
+    if (encr_key.rounds != 10) {
+        fprintf(stderr, "\nkey.rounds=%d\n", encr_key.rounds);
     }
-    if (0 != memcmp(key.rd_key, exp_key, sizeof exp_key)) {
+    if (0 != memcmp(encr_key.rd_key, exp_key, sizeof exp_key)) {
         fprintf(stderr, "\nRound keys are different\n");
+    }
+    uint8_t cipher_text[16];
+    AES_encrypt(ref_plain_text, cipher_text, &encr_key);
+    if (0 != memcmp(ref_cipher_text, cipher_text, sizeof ref_cipher_text)) {
+        fprintf(stderr, "\nEncryption error\n");
+    }
+    AES_KEY decr_key;
+    private_AES_set_encrypt_key(userKey, bits, &decr_key);
+    uint8_t plain_text[16];
+    AES_decrypt(ref_cipher_text, plain_text,  &decr_key);
+    if (0 != memcmp(ref_plain_text, plain_text, sizeof ref_plain_text)) {
+        fprintf(stderr, "\nDecryption error\n");
     }
 }
 
 static void
-key_expansion_test_192(void)
+test_192(void)
 {
     unsigned char const userKey[24] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
                                         0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -1745,20 +1749,38 @@ key_expansion_test_192(void)
         UINT64_C(0x2cdfbc27781e60de), UINT64_C(0x32daaed80f8023a2), // de601e7827bcdf2ca223800fd8aeda32
         UINT64_C(0x09dc781a330a97a4), UINT64_C(0x5d1da4e371c218c4), // a4970a331a78dc09c418c271e3a41d5d
     };
-    int bits = 192;
-    AES_KEY key;
-    private_AES_set_encrypt_key(userKey, bits, &key);
-    if (key.rounds != 12) {
-        fprintf(stderr, "\nkey.rounds=%d\n", key.rounds);
+    static uint8_t const ref_cipher_text[16] =
+    {
+        0xDD, 0xA9, 0x7C, 0xA4, 0x86, 0x4C, 0xDF, 0xE0,
+        0x6E, 0xAF, 0x70, 0xA0, 0xEC, 0x0D, 0x71, 0x91
+    };
+
+    static int const bits = 192;
+    AES_KEY encr_key;
+    private_AES_set_encrypt_key(userKey, bits, &encr_key);
+    if (encr_key.rounds != 12) {
+        fprintf(stderr, "\nkey.rounds=%d\n", encr_key.rounds);
     }
 
-    if (0 != memcmp(key.rd_key, exp_key, sizeof exp_key)) {
+    if (0 != memcmp(encr_key.rd_key, exp_key, sizeof exp_key)) {
         fprintf(stderr, "\nRound keys are different\n");
+    }
+    uint8_t cipher_text[16];
+    AES_encrypt(ref_plain_text, cipher_text, &encr_key);
+    if (0 != memcmp(ref_cipher_text, cipher_text, sizeof ref_cipher_text)) {
+        fprintf(stderr, "\nEncryption error\n");
+    }
+    AES_KEY decr_key;
+    private_AES_set_encrypt_key(userKey, bits, &decr_key);
+    uint8_t plain_text[16];
+    AES_decrypt(ref_cipher_text, plain_text,  &decr_key);
+    if (0 != memcmp(ref_plain_text, plain_text, sizeof ref_plain_text)) {
+        fprintf(stderr, "\nDecryption error\n");
     }
 }
 
 static void
-key_expansion_test_256(void)
+test_256(void)
 {
     unsigned char const userKey[32] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
                                         0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -1781,14 +1803,31 @@ key_expansion_test_256(void)
         UINT64_C(0xe04ff2a999665a4e), UINT64_C(0xeacdf8cdaa2b577e), // 4e5a6699a9f24fe07e572baacdf8cdea
         UINT64_C(0xe97909bfcc79fc24), UINT64_C(0x36de686d3cc21a37), // 24fc79ccbf0979e9371ac23c6d68de36
     };
-    int bits = 256;
-    AES_KEY key;
-    private_AES_set_encrypt_key(userKey, bits, &key);
-    if (key.rounds != 14) {
-        fprintf(stderr, "\nkey.rounds=%d\n", key.rounds);
+    static uint8_t const ref_cipher_text[16] =
+    {
+        0x8E, 0xA2, 0xB7, 0xCA, 0x51, 0x67, 0x45, 0xBF,
+        0xEA, 0xFC, 0x49, 0x90, 0x4B, 0x49, 0x60, 0x89
+    };
+    static int const bits = 256;
+    AES_KEY encr_key;
+    private_AES_set_encrypt_key(userKey, bits, &encr_key);
+    if (encr_key.rounds != 14) {
+        fprintf(stderr, "\nkey.rounds=%d\n", encr_key.rounds);
     }
-    if (0 != memcmp(key.rd_key, exp_key, sizeof exp_key)) {
+    if (0 != memcmp(encr_key.rd_key, exp_key, sizeof exp_key)) {
         fprintf(stderr, "\nRound keys are different\n");
+    }
+    uint8_t cipher_text[16];
+    AES_encrypt(ref_plain_text, cipher_text, &encr_key);
+    if (0 != memcmp(ref_cipher_text, cipher_text, sizeof ref_cipher_text)) {
+        fprintf(stderr, "\nEncryption error\n");
+    }
+    AES_KEY decr_key;
+    private_AES_set_encrypt_key(userKey, bits, &decr_key);
+    uint8_t plain_text[16];
+    AES_decrypt(ref_cipher_text, plain_text,  &decr_key);
+    if (0 != memcmp(ref_plain_text, plain_text, sizeof ref_plain_text)) {
+        fprintf(stderr, "\nDecryption error\n");
     }
 }
 /**
@@ -1804,9 +1843,9 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
         static int test = 0;
         if(!test) {
             test = 1;
-            key_expansion_test_128();
-            key_expansion_test_192();
-            key_expansion_test_256();
+            test_128();
+            test_192();
+            test_256();
         }
     #endif
 
@@ -1836,11 +1875,20 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
             for (int i = 0; i <= 7; ++i) {
                 uint8_t const RCON = 1 << i;
                 size_t const EK_OFF = 3 * (i + 1);
-                aes_192_key_expansion(&K0,
-                                      &K1,
-                                      sc_aeskeygenassist(K1, RCON),
-                                      rk + EK_OFF,
-                                      EK_OFF == 24);
+                uint128_type const key2_with_rcon = sc_aeskeygenassist(K1, RCON);
+                double *out = rk + EK_OFF;
+                bool const last = EK_OFF == 24;
+                K0 = aes_key_expansion(K0, shuffle(key2_with_rcon, 1));
+                memcpy(out, &K0, 4 * 4);
+
+                if (!last) {
+                    uint128_type key2 = K1;
+                    key2 = xor_to(key2, sll_4(key2));
+                    key2 = xor_to(key2, shuffle(K0, 3));
+
+                    K1 = key2;
+                    out[2] = key2.st[0];
+                }
             }
         }
         break;
@@ -1932,15 +1980,23 @@ AES_encrypt(unsigned char const *p_in,
     register double key0;
     register double key1;
     asm(
-        "\t" "fld %[key_lo], 0(%[p]); "  "fld %[key_hi], 8(%[p]); " "\n"
-        "\t" "addi %[p], %[p], 16; " "\n"
-        "\t" "sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
-        "\t" "fld %[key_lo], 0(%[p]); "  "fld %[key_hi], 8(%[p]); " "\n"
+        "\t" "fld %[key_lo], 0 * 16 + 0(%[p]); "  "fld %[key_hi], 0 * 16 + 8(%[p]); " "sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+        "\t" ".irp k, 1, 2, 3, 4, 5, 6, 7, 8, 9" "\n"
+        "\t" "\t" "fld %[key_lo], ((\\k) * 16 + 0)(%[p]); "  "fld %[key_hi], ((\\k) * 16 + 8)(%[p]); " "sc_aesenc %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+        "\t" ".endr" "\n"
+        "\t" "addi %[p], %[p], 10 * 16; " "\n"
+        "\t" "beq %[p], %[p_last],1f" "\n"
+        "\t" ".irp k, 0, 1" "\n"
+        "\t" "\t" "fld %[key_lo], ((\\k) * 16 + 0)(%[p]); "  "fld %[key_hi], ((\\k) * 16 + 8)(%[p]); " "sc_aesenc %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+        "\t" ".endr" "\n"
+        "\t" "addi %[p], %[p], 2 * 16; " "\n"
+        "\t" "beq %[p], %[p_last],1f" "\n"
+        "\t" ".irp k, 0, 1" "\n"
+        "\t" "\t" "fld %[key_lo], ((\\k) * 16 + 0)(%[p]); "  "fld %[key_hi], ((\\k) * 16 + 8)(%[p]); " "sc_aesenc %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+        "\t" ".endr" "\n"
+        "\t" "addi %[p], %[p], 2 * 16; " "\n"
         "1:" "\n"
-        "\t" "addi %[p], %[p], 16; " "\n"
-        "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
-        "\t" "fld %[key_lo], 0(%[p]); "  "fld %[key_hi], 8(%[p]); " "\n"
-        "\t" "bne %[p], %[p_last],1b" "\n"
+        "\t" "fld %[key_lo], (0 * 16 + 0)(%[p]); "  "fld %[key_hi], (0 * 16 + 8)(%[p]); " "\n"
         "\t" "sc_aesenclast %[state_lo], %[state_hi], %[key_lo], %[key_hi]; "  "\n"
         :
         [p] "+r" (p),
