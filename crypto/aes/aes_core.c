@@ -1674,7 +1674,8 @@ aes_256_key_expansion(uint128_type key, uint128_type key2)
     uint128_type const key_with_rcon = shuffle(key_with_rcon0, 2);
     return aes_key_expansion(key, key_with_rcon);
 }
-
+// #define AES_BUILTIN_TEST
+#ifdef AES_BUILTIN_TEST
 static uint8_t const ref_plain_text[16] =
 {
     0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
@@ -1830,6 +1831,7 @@ test_256(void)
         fprintf(stderr, "\nDecryption error\n");
     }
 }
+#endif
 /**
  Expand the cipher key into the encryption key schedule.
  */
@@ -1839,15 +1841,15 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
                             AES_KEY *key)
 {
     assert(userKey && key);
-    #if 1
-        static int test = 0;
-        if(!test) {
-            test = 1;
-            test_128();
-            test_192();
-            test_256();
-        }
-    #endif
+#ifdef AES_BUILTIN_TEST
+    static int test = 0;
+    if(!test) {
+        test = 1;
+        test_128();
+        test_192();
+        test_256();
+    }
+#endif
 
     double *const rk = (double *)key->rd_key;
 
@@ -1980,23 +1982,32 @@ AES_encrypt(unsigned char const *p_in,
     register double key0;
     register double key1;
     asm(
-        "\t" "fld %[key_lo], 0 * 16 + 0(%[p]); "  "fld %[key_hi], 0 * 16 + 8(%[p]); " "sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+        "\t" "fld %[key_lo], 0 * 16 + 0(%[p]); " "\n"
+        "\t" "fld %[key_hi], 0 * 16 + 8(%[p]); " "\n"
+        "\t" "sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+
         "\t" ".irp k, 1, 2, 3, 4, 5, 6, 7, 8, 9" "\n"
-        "\t" "\t" "fld %[key_lo], ((\\k) * 16 + 0)(%[p]); "  "fld %[key_hi], ((\\k) * 16 + 8)(%[p]); " "sc_aesenc %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+            "\t" "\t" "fld %[key_lo], ((\\k) * 16 + 0)(%[p]); " "\n"
+            "\t" "\t" "fld %[key_hi], ((\\k) * 16 + 8)(%[p]); " "\n"
+            "\t" "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
         "\t" ".endr" "\n"
+
         "\t" "addi %[p], %[p], 10 * 16; " "\n"
-        "\t" "beq %[p], %[p_last],1f" "\n"
-        "\t" ".irp k, 0, 1" "\n"
-        "\t" "\t" "fld %[key_lo], ((\\k) * 16 + 0)(%[p]); "  "fld %[key_hi], ((\\k) * 16 + 8)(%[p]); " "sc_aesenc %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
-        "\t" ".endr" "\n"
-        "\t" "addi %[p], %[p], 2 * 16; " "\n"
-        "\t" "beq %[p], %[p_last],1f" "\n"
-        "\t" ".irp k, 0, 1" "\n"
-        "\t" "\t" "fld %[key_lo], ((\\k) * 16 + 0)(%[p]); "  "fld %[key_hi], ((\\k) * 16 + 8)(%[p]); " "sc_aesenc %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
-        "\t" ".endr" "\n"
-        "\t" "addi %[p], %[p], 2 * 16; " "\n"
+        "\t" "beq %[p], %[p_last],2f" "\n"
+
         "1:" "\n"
-        "\t" "fld %[key_lo], (0 * 16 + 0)(%[p]); "  "fld %[key_hi], (0 * 16 + 8)(%[p]); " "\n"
+        "\t" ".irp k, 0, 1" "\n"
+            "\t" "\t" "fld %[key_lo], ((\\k) * 16 + 0)(%[p]); " "\n"
+            "\t" "\t" "fld %[key_hi], ((\\k) * 16 + 8)(%[p]); " "\n"
+            "\t" "\t" "sc_aesenc %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+        "\t" ".endr" "\n"
+
+        "\t" "addi %[p], %[p], 2 * 16; " "\n"
+        "\t" "bne %[p], %[p_last], 1b; " "\n"
+
+        "2:" "\n"
+        "\t" "fld %[key_lo], (0 * 16 + 0)(%[p]); " "\n"
+        "\t" "fld %[key_hi], (0 * 16 + 8)(%[p]); " "\n"
         "\t" "sc_aesenclast %[state_lo], %[state_hi], %[key_lo], %[key_hi]; "  "\n"
         :
         [p] "+r" (p),
@@ -2040,15 +2051,32 @@ AES_decrypt(unsigned char const *p_in,
     register double key0;
     register double key1;
     asm(
-        "\t" "fld %[key_lo], 0(%[p]); "  "fld %[key_hi], 8(%[p]); " "\n"
-        "\t" "addi %[p], %[p], -16; " "\n"
+        "\t" "fld %[key_lo], 0 * -16 + 0(%[p]); " "\n"
+        "\t" "fld %[key_hi], 0 * -16 + 8(%[p]); " "\n"
         "\t" "sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
-        "\t" "fld %[key_lo], 0(%[p]); "  "fld %[key_hi], 8(%[p]); " "\n"
+
+        "\t" ".irp k, 1, 2, 3, 4, 5, 6, 7, 8, 9" "\n"
+            "\t" "\t" "fld %[key_lo], ((\\k) * -16 + 0)(%[p]); " "\n"
+            "\t" "\t" "fld %[key_hi], ((\\k) * -16 + 8)(%[p]); " "\n"
+            "\t" "\t" "sc_aesdec %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+        "\t" ".endr" "\n"
+
+        "\t" "addi %[p], %[p], 10 * -16; " "\n"
+        "\t" "beq %[p], %[p_last],2f" "\n"
+
         "1:" "\n"
-        "\t" "addi %[p], %[p], -16; " "\n"
-        "\t" "sc_aesdec %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
-        "\t" "fld %[key_lo], 0(%[p]); "  "fld %[key_hi], 8(%[p]); " "\n"
+        "\t" ".irp k, 0, 1" "\n"
+            "\t" "\t" "fld %[key_lo], ((\\k) * -16 + 0)(%[p]); " "\n"
+            "\t" "\t" "fld %[key_hi], ((\\k) * -16 + 8)(%[p]); " "\n"
+            "\t" "\t" "sc_aesdec %[state_lo], %[state_hi], %[key_lo], %[key_hi]; " "\n"
+        "\t" ".endr" "\n"
+
+        "\t" "addi %[p], %[p], 2 * -16; " "\n"
         "\t" "bne %[p], %[p_last],1b" "\n"
+
+        "2:" "\n"
+        "\t" "fld %[key_lo], (0 * -16 + 0)(%[p]); " "\n"
+        "\t" "fld %[key_hi], (0 * -16 + 8)(%[p]); " "\n"
         "\t" "sc_aesdeclast %[state_lo], %[state_hi], %[key_lo], %[key_hi]; "  "\n"
         :
         [p] "+r" (p),
