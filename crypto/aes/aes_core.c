@@ -42,6 +42,7 @@
 #include <openssl/aes.h>
 #include <string.h>
 #include <inttypes.h>
+#include <limits.h>
 
 #ifndef __riscv__
 #ifndef AES_ASM
@@ -1608,43 +1609,21 @@ sc_aeskeygenassist(uint128_type state, uint8_t rcon)
     return state;
 }
 
-inline static uint128_type
+static inline uint128_type
 sll_4(uint128_type key)
 {
-    int_pair tmp0;
-    tmp0 = to_parts(key.st[0]);
-    key.st[0] = from_parts(0u, tmp0.p[0]);
-    int_pair tmp1;
-    tmp1 = to_parts(key.st[1]);
-    key.st[1] = from_parts(tmp0.p[1],tmp1.p[0]);
+    int_pair const tmp0 = to_parts(key.st[0]);
+    int_pair tmp1 = to_parts(key.st[1]);
+    key.st[0] = from_parts(0u,        tmp0.p[0]);
+    key.st[1] = from_parts(tmp0.p[1], tmp1.p[0]);
     return key;
 }
 
 static inline uint128_type
 shuffle(uint128_type const r, unsigned i)
 {
-    int_pair tmp;
-    double ftmp;
-    switch(i) {
-        case 0:
-            tmp = to_parts(r.st[0]);
-            ftmp = from_parts(tmp.p[0], tmp.p[0]);
-            break;
-        case 1:
-            tmp = to_parts(r.st[0]);
-            ftmp = from_parts(tmp.p[1], tmp.p[1]);
-            break;
-        case 2:
-            tmp = to_parts(r.st[1]);
-            ftmp = from_parts(tmp.p[0], tmp.p[0]);
-            break;
-        case 3:
-            tmp = to_parts(r.st[1]);
-            ftmp = from_parts(tmp.p[1], tmp.p[1]);
-            break;
-        default:
-            break;
-    }
+    int_pair const tmp = to_parts(r.st[i / 2]);
+    double const ftmp = from_parts(tmp.p[i & 1], tmp.p[i & 1]);
     uint128_type const res = { { ftmp, ftmp } };
     return res;
 }
@@ -1671,65 +1650,49 @@ aeskeygenassist_hlp(uint128_type key, unsigned e)
 }
 
 static inline uint128_type
-AES_128_key_exp(uint128_type key, unsigned i_power)
+aes_key_expansion(uint128_type key,
+                  uint128_type const key_with_rcon)
 {
-    uint128_type const key_with_rcon0 = aeskeygenassist_hlp(key, i_power);
+    key = xor_to(key, sll_4(key));
+    key = xor_to(key, sll_4(key));
+    key = xor_to(key, sll_4(key));
+    return xor_to(key, key_with_rcon);
+}
+
+static inline uint128_type
+aes_128_key_expansion(uint128_type key,
+                      uint128_type key_with_rcon0)
+{
     uint128_type const key_with_rcon = shuffle(key_with_rcon0, 3);
-    key = xor_to(key, sll_4(key));
-    key = xor_to(key, sll_4(key));
-    key = xor_to(key, sll_4(key));
-    return xor_to(key, key_with_rcon);
+    return aes_key_expansion(key, key_with_rcon);
 }
 
-static uint128_type
-aes_128_key_expansion(uint128_type key, uint128_type key_with_rcon)
-{
-    key_with_rcon = shuffle(key_with_rcon, 3);
-    key = xor_to(key, sll_4(key));
-    key = xor_to(key, sll_4(key));
-    key = xor_to(key, sll_4(key));
-    return xor_to(key, key_with_rcon);
-}
-
-static void
-aes_192_key_expansion(uint128_type *K1,
-                      uint128_type *K2,
-                      uint128_type key2_with_rcon,
-                      uint32_t *out, 
-                      bool last)
-{
-    uint128_type key1 = *K1;
-    uint128_type key2 = *K2;
-
-    key2_with_rcon = shuffle(key2_with_rcon, 1);
-    key1 = xor_to(key1, sll_4(key1));
-    key1 = xor_to(key1, sll_4(key1));
-    key1 = xor_to(key1, sll_4(key1));
-    key1 = xor_to(key1, key2_with_rcon);
-
-    *K1 = key1;
-    memcpy(out, key1.st, 4 * 4);
-
-    if (!last) {
-        key2 = xor_to(key2, sll_4(key2));
-        key2 = xor_to(key2, shuffle(key1, 3));
-
-        *K2 = key2;
-        int_pair p = to_parts(key2.st[0]);
-        out[4] = p.p[0];
-        out[5] = p.p[1];
-    }
-}
-
-uint128_type
+static inline uint128_type
 aes_256_key_expansion(uint128_type key, uint128_type key2)
 {
-    uint128_type key_with_rcon = sc_aeskeygenassist(key2, 0x00);
-    key_with_rcon = shuffle(key_with_rcon, 2);
-    key = xor_to(key, sll_4(key));
-    key = xor_to(key, sll_4(key));
-    key = xor_to(key, sll_4(key));
-    return xor_to(key, key_with_rcon);
+    uint128_type const key_with_rcon0 = sc_aeskeygenassist(key2, 0x00);
+    uint128_type const key_with_rcon = shuffle(key_with_rcon0, 2);
+    return aes_key_expansion(key, key_with_rcon);
+}
+
+static inline void
+aes_192_key_expansion(uint128_type *K1,
+                      uint128_type *K2,
+                      uint128_type const key2_with_rcon,
+                      double *out,
+                      bool last)
+{
+    *K1 = aes_key_expansion(*K1, shuffle(key2_with_rcon, 1));
+    memcpy(out, K1, 4 * 4);
+
+    if (!last) {
+        uint128_type key2 = *K2;
+        key2 = xor_to(key2, sll_4(key2));
+        key2 = xor_to(key2, shuffle(*K1, 3));
+
+        *K2 = key2;
+        out[2] = key2.st[0];
+    }
 }
 
 static void
@@ -1829,7 +1792,7 @@ key_expansion_test_256(void)
     }
 }
 /**
- * Expand the cipher key into the encryption key schedule.
+ Expand the cipher key into the encryption key schedule.
  */
 int
 private_AES_set_encrypt_key(unsigned char const *userKey,
@@ -1847,119 +1810,96 @@ private_AES_set_encrypt_key(unsigned char const *userKey,
         }
     #endif
 
+    double *const rk = (double *)key->rd_key;
 
-    switch(bits) {
+    switch (bits) {
     case 128:
-        key->rounds = 10;
+        {
+            key->rounds = 10;
+            memcpy(rk, userKey, bits / CHAR_BIT);
+            uint128_type K = *(uint128_type const*)rk;
+
+            for (unsigned i = 0; i < 10; ++i) {
+                K = aes_128_key_expansion(K, aeskeygenassist_hlp(K, i));
+                rk[2 * (i + 1) + 0] = K.st[0];
+                rk[2 * (i + 1) + 1] = K.st[1];
+            }
+        }
         break;
     case 192:
-        key->rounds = 12;
+        {
+            key->rounds = 12;
+            memcpy(rk, userKey, bits / CHAR_BIT);
+            uint128_type K0 = {rk[0], rk[1]};
+            uint128_type K1 = {rk[2], 0};
+
+            for (int i = 0; i <= 7; ++i) {
+                uint8_t const RCON = 1 << i;
+                size_t const EK_OFF = 3 * (i + 1);
+                aes_192_key_expansion(&K0,
+                                      &K1,
+                                      sc_aeskeygenassist(K1, RCON),
+                                      rk + EK_OFF,
+                                      EK_OFF == 24);
+            }
+        }
         break;
     case 256:
-        key->rounds = 14;
+        {
+            key->rounds = 14;
+            memcpy(rk, userKey, bits / CHAR_BIT);
+            uint128_type K0 = {rk[0], rk[1]};
+            uint128_type K1 = {rk[2], rk[3]};
+            uint128_type const K2 = aes_128_key_expansion(K0, sc_aeskeygenassist(K1, 0x01));
+            rk[ 4] = K2.st[0];
+            rk[ 5] = K2.st[1];
+            uint128_type const K3 = aes_256_key_expansion(K1, K2);
+            rk[ 6] = K3.st[0];
+            rk[ 7] = K3.st[1];
+            uint128_type const K4 = aes_128_key_expansion(K2, sc_aeskeygenassist(K3, 0x02));
+            rk[ 8] = K4.st[0];
+            rk[ 9] = K4.st[1];
+            uint128_type const K5 = aes_256_key_expansion(K3, K4);
+            rk[10] = K5.st[0];
+            rk[11] = K5.st[1];
+            uint128_type const K6 = aes_128_key_expansion(K4, sc_aeskeygenassist(K5, 0x04));
+            rk[12] = K6.st[0];
+            rk[13] = K6.st[1];
+            uint128_type const K7 = aes_256_key_expansion(K5, K6);
+            rk[14] = K7.st[0];
+            rk[15] = K7.st[1];
+            uint128_type const K8 = aes_128_key_expansion(K6, sc_aeskeygenassist(K7, 0x08));
+            rk[16] = K8.st[0];
+            rk[17] = K8.st[1];
+            uint128_type const K9 = aes_256_key_expansion(K7, K8);
+            rk[18] = K9.st[0];
+            rk[19] = K9.st[1];
+            uint128_type const K10 = aes_128_key_expansion(K8, sc_aeskeygenassist(K9, 0x10));
+            rk[20] = K10.st[0];
+            rk[21] = K10.st[1];
+            uint128_type const K11 = aes_256_key_expansion(K9, K10);
+            rk[22] = K11.st[0];
+            rk[23] = K11.st[1];
+            uint128_type const K12 = aes_128_key_expansion(K10, sc_aeskeygenassist(K11, 0x20));
+            rk[24] = K12.st[0];
+            rk[25] = K12.st[1];
+            uint128_type const K13 = aes_256_key_expansion(K11, K12);
+            rk[26] = K13.st[0];
+            rk[27] = K13.st[1];
+            uint128_type const K14 = aes_128_key_expansion(K12, sc_aeskeygenassist(K13, 0x40));
+            rk[28] = K14.st[0];
+            rk[29] = K14.st[1];
+        }
         break;
     default:
         return -2;
-    }
-
-    double *rk = (double *)key->rd_key;
-
-    uint128_type K;
-    memcpy(&K, userKey, 16);
-    
-    rk[0] = K.st[0];
-    rk[1] = K.st[1];
-
-    if (bits == 128) {
-        for (unsigned i = 0; i < 10; ++i) {
-            K = AES_128_key_exp(K, i);
-            rk[2 * (i + 1)    ] = K.st[0];
-            rk[2 * (i + 1) + 1] = K.st[1];
-        }
-    }
-    if (bits == 192) {
-        uint128_type K0;
-        uint128_type K1;
-        memcpy(K0.st, userKey, 16);
-        memcpy(K1.st, userKey + 8, 16);
-        K1.st[0] = K1.st[1];
-        K1.st[1] = 0;
-
-        memcpy(rk, userKey, 6 * 4);
-
-    #define AES_192_key_exp(RCON, EK_OFF) \
-        aes_192_key_expansion(&K0, \
-                              &K1, \
-                              sc_aeskeygenassist(K1, RCON), \
-                              (uint32_t*)rk + EK_OFF, \
-                              EK_OFF == 48)
-
-        AES_192_key_exp(0x01,  6);
-        AES_192_key_exp(0x02, 12);
-        AES_192_key_exp(0x04, 18);
-        AES_192_key_exp(0x08, 24);
-        AES_192_key_exp(0x10, 30);
-        AES_192_key_exp(0x20, 36);
-        AES_192_key_exp(0x40, 42);
-        AES_192_key_exp(0x80, 48);
-
-    #undef AES_192_key_exp
-    }
-    if (bits == 256) {
-        uint128_type K0;
-        memcpy(K0.st, userKey, 16);
-        rk[ 0] = K0.st[0];
-        rk[ 1] = K0.st[1];
-        uint128_type K1;
-        memcpy(K1.st, userKey + 16, 16);
-        rk[ 2] = K1.st[0];
-        rk[ 3] = K1.st[1];
-        uint128_type const K2 = aes_128_key_expansion(K0, sc_aeskeygenassist(K1, 0x01));
-        rk[ 4] = K2.st[0];
-        rk[ 5] = K2.st[1];
-        uint128_type const K3 = aes_256_key_expansion(K1, K2);
-        rk[ 6] = K3.st[0];
-        rk[ 7] = K3.st[1];
-        uint128_type const K4 = aes_128_key_expansion(K2, sc_aeskeygenassist(K3, 0x02));
-        rk[ 8] = K4.st[0];
-        rk[ 9] = K4.st[1];
-        uint128_type const K5 = aes_256_key_expansion(K3, K4);
-        rk[10] = K5.st[0];
-        rk[11] = K5.st[1];
-        uint128_type const K6 = aes_128_key_expansion(K4, sc_aeskeygenassist(K5, 0x04));
-        rk[12] = K6.st[0];
-        rk[13] = K6.st[1];
-        uint128_type const K7 = aes_256_key_expansion(K5, K6);
-        rk[14] = K7.st[0];
-        rk[15] = K7.st[1];
-        uint128_type const K8 = aes_128_key_expansion(K6, sc_aeskeygenassist(K7, 0x08));
-        rk[16] = K8.st[0];
-        rk[17] = K8.st[1];
-        uint128_type const K9 = aes_256_key_expansion(K7, K8);
-        rk[18] = K9.st[0];
-        rk[19] = K9.st[1];
-        uint128_type const K10 = aes_128_key_expansion(K8, sc_aeskeygenassist(K9, 0x10));
-        rk[20] = K10.st[0];
-        rk[21] = K10.st[1];
-        uint128_type const K11 = aes_256_key_expansion(K9, K10);
-        rk[22] = K11.st[0];
-        rk[23] = K11.st[1];
-        uint128_type const K12 = aes_128_key_expansion(K10, sc_aeskeygenassist(K11, 0x20));
-        rk[24] = K12.st[0];
-        rk[25] = K12.st[1];
-        uint128_type const K13 = aes_256_key_expansion(K11, K12);
-        rk[26] = K13.st[0];
-        rk[27] = K13.st[1];
-        uint128_type const K14 = aes_128_key_expansion(K12, sc_aeskeygenassist(K13, 0x40));
-        rk[28] = K14.st[0];
-        rk[29] = K14.st[1];
     }
 
     return 0;
 }
 
 /**
- * Expand the cipher key into the decryption key schedule.
+Expand the cipher key into the decryption key schedule.
  */
 int
 private_AES_set_decrypt_key(unsigned char const *userKey,
@@ -1969,10 +1909,10 @@ private_AES_set_decrypt_key(unsigned char const *userKey,
     return private_AES_set_encrypt_key(userKey, bits, key);
 }
 
-/*
- * Encrypt a single block
- * in and out can overlap
- */
+/**
+ Encrypt a single block
+  in and out can overlap
+*/
 void
 AES_encrypt(unsigned char const *p_in,
             unsigned char *p_out,
@@ -2019,10 +1959,10 @@ AES_encrypt(unsigned char const *p_in,
     }
 }
 
-/*
- * Decrypt a single block
- * in and out can overlap
- */
+/**
+Decrypt a single block
+in and out can overlap
+*/
 void
 AES_decrypt(unsigned char const *p_in,
             unsigned char *p_out,
