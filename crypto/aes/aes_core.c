@@ -44,7 +44,7 @@
 #include <inttypes.h>
 #include <limits.h>
 
-#ifndef __riscv__
+#if !defined(__riscv__)
 #ifndef AES_ASM
 /*-
 Te0[x] = S [x].[02, 01, 01, 03];
@@ -1579,7 +1579,7 @@ to_parts(double const src)
 {
     uint32_t dst_lo;
     uint32_t dst_hi;
-    asm("\t" "sc_fmv.2x.d %[x_lo],%[x_hi],%[fsrc]" "\n"
+    asm("\t" "sc_fmv.2x.d %[x_lo],%[x_hi],%[fsrc];" "fence.i; " "\n"
         : [x_hi] "=r" (dst_hi),
           [x_lo] "=r" (dst_lo)
         : [fsrc] "f" (src));
@@ -1674,7 +1674,7 @@ aes_256_key_expansion(uint128_type key, uint128_type key2)
     uint128_type const key_with_rcon = shuffle(key_with_rcon0, 2);
     return aes_key_expansion(key, key_with_rcon);
 }
-// #define AES_BUILTIN_TEST
+#define AES_BUILTIN_TEST
 #ifdef AES_BUILTIN_TEST
 static uint8_t const ref_plain_text[16] =
 {
