@@ -1563,7 +1563,7 @@ struct int_pair_st
 };
 typedef struct int_pair_st int_pair;
 
-static inline uint128_type
+static __inline uint128_type
 xor_to(uint128_type state, uint128_type const key)
 {
     asm("sc_xor128 %[state_lo], %[state_hi], %[key_lo], %[key_hi]" :
@@ -1574,7 +1574,7 @@ xor_to(uint128_type state, uint128_type const key)
     return state;
 }
 
-static inline int_pair
+static __inline int_pair
 to_parts(double const src)
 {
     uint32_t dst_lo;
@@ -1587,7 +1587,7 @@ to_parts(double const src)
     return res;
 }
 
-static inline double
+static __inline double
 from_parts(uint32_t src_lo, uint32_t src_hi)
 {
     double dst;
@@ -1598,7 +1598,7 @@ from_parts(uint32_t src_lo, uint32_t src_hi)
     return dst;
 }
 
-static inline uint128_type
+static __inline uint128_type
 sc_aeskeygenassist(uint128_type state, uint8_t rcon)
 {
     double const key = from_parts(0, (uint32_t)rcon);
@@ -1609,7 +1609,7 @@ sc_aeskeygenassist(uint128_type state, uint8_t rcon)
     return state;
 }
 
-static inline uint128_type
+static __inline uint128_type
 sll_4(uint128_type key)
 {
     int_pair const tmp0 = to_parts(key.st[0]);
@@ -1619,7 +1619,7 @@ sll_4(uint128_type key)
     return key;
 }
 
-static inline uint128_type
+static __inline uint128_type
 shuffle(uint128_type const r, unsigned i)
 {
     int_pair const tmp = to_parts(r.st[i / 2]);
@@ -1628,7 +1628,7 @@ shuffle(uint128_type const r, unsigned i)
     return res;
 }
 
-static inline uint128_type
+static __inline uint128_type
 aeskeygenassist_hlp(uint128_type key, unsigned e)
 {
     switch (e) {
@@ -1649,7 +1649,7 @@ aeskeygenassist_hlp(uint128_type key, unsigned e)
     }
 }
 
-static inline uint128_type
+static __inline uint128_type
 aes_key_expansion(uint128_type key,
                   uint128_type const key_with_rcon)
 {
@@ -1659,7 +1659,7 @@ aes_key_expansion(uint128_type key,
     return xor_to(key, key_with_rcon);
 }
 
-static inline uint128_type
+static __inline uint128_type
 aes_128_key_expansion(uint128_type key,
                       uint128_type key_with_rcon0)
 {
@@ -1667,14 +1667,14 @@ aes_128_key_expansion(uint128_type key,
     return aes_key_expansion(key, key_with_rcon);
 }
 
-static inline uint128_type
+static __inline uint128_type
 aes_256_key_expansion(uint128_type key, uint128_type key2)
 {
     uint128_type const key_with_rcon0 = sc_aeskeygenassist(key2, 0x00);
     uint128_type const key_with_rcon = shuffle(key_with_rcon0, 2);
     return aes_key_expansion(key, key_with_rcon);
 }
-#define AES_BUILTIN_TEST
+// #define AES_BUILTIN_TEST
 #ifdef AES_BUILTIN_TEST
 static uint8_t const ref_plain_text[16] =
 {
