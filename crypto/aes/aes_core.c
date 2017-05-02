@@ -44,7 +44,11 @@
 #include <inttypes.h>
 #include <limits.h>
 
-#if !defined(__riscv__)
+#ifdef __riscv__
+#define SC_RV32_CUSTOM_AES
+#endif
+
+#ifndef SC_RV32_CUSTOM_AES
 #ifndef AES_ASM
 /*-
 Te0[x] = S [x].[02, 01, 01, 03];
