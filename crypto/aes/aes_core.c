@@ -1583,7 +1583,7 @@ to_parts(double const src)
 {
     uint32_t dst_lo;
     uint32_t dst_hi;
-    asm("\t" "sc_fmv.2x.d %[x_lo],%[x_hi],%[fsrc];" "fence.i; " "\n"
+    asm("\t" "sc_fmv.2x.d %[x_lo],%[x_hi],%[fsrc];" "\n"
         : [x_hi] "=r" (dst_hi),
           [x_lo] "=r" (dst_lo)
         : [fsrc] "f" (src));
