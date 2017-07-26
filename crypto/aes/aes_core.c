@@ -1465,7 +1465,7 @@ asm(
     "       .error \"Two destinations to same register\"" "\n"
     "       .exitm" "\n"
     "    .endif" "\n"
-    "    riscv_R_type 0b1110000, n_x_hi, n_frs, 0b000, n_x_lo, 0b1010011" "\n"
+    "    riscv_R_type 0b1110001, n_x_hi, n_frs, 0b000, n_x_lo, 0b1010011" "\n"
     ".endm" "\n"
 
     ".macro sc_fmv.d.2x frd,x_lo,x_hi" "\n"
@@ -1473,7 +1473,7 @@ asm(
     "    rv_freg_to_num \\frd, n_frd" "\n"
     "    rv_reg_to_num \\x_lo, n_x_lo" "\n"
     "    rv_reg_to_num \\x_hi, n_x_hi" "\n"
-    "    riscv_R_type 0b1111000, n_x_hi, n_x_lo, 0b000, n_frd, 0b1010011" "\n"
+    "    riscv_R_type 0b1111001, n_x_hi, n_x_lo, 0b000, n_frd, 0b1010011" "\n"
     ".endm" "\n"
 
     ".macro sc_magma_be acc, op1, op2" "\n"
